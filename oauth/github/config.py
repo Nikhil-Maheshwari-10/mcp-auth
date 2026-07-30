@@ -1,0 +1,3 @@
+"""
+Loads GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET, GITHUB_REDIRECT_URI from environment.
+"""
