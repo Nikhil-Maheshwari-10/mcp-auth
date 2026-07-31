@@ -13,6 +13,9 @@ env/
 # Environment variables
 .env
 
+# Token storage
+.tokens/
+
 # Distribution / packaging
 dist/
 build/
@@ -27,3 +30,6 @@ htmlcov/
 .idea/
 .vscode/
 *.swp
+
+# Testing
+tests/
