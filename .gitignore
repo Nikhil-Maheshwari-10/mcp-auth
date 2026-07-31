@@ -33,3 +33,8 @@ htmlcov/
 
 # Testing
 tests/
+testing_agent/
+
+# ADK state and generated files
+.adk/
+tmp/
