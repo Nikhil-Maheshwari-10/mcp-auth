@@ -32,5 +32,18 @@ services:
       postgres:
         condition: service_healthy
 
+  api:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    container_name: api
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+
 volumes:
   postgres_data:

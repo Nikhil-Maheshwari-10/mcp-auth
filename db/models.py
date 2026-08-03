@@ -4,6 +4,7 @@ SQLAlchemy ORM models for the workspace agent.
 Tables:
   User        — one row per authenticated human user
   OAuthToken  — one row per (user, provider) pair, stores credentials
+  Session     — browser session (session_id → user_id), issued as a cookie
 """
 
 import uuid
@@ -76,3 +77,25 @@ class OAuthToken(Base):
 
     def __repr__(self) -> str:
         return f"<OAuthToken user={self.user_id} provider={self.provider}>"
+
+
+class Session(Base):
+    __tablename__ = "sessions"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )
+    last_seen: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    user: Mapped["User"] = relationship("User")
+
+    def __repr__(self) -> str:
+        return f"<Session id={self.id} user={self.user_id}>"
