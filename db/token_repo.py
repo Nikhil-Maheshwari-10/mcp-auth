@@ -58,7 +58,8 @@ async def save_token(user_id: uuid.UUID, provider: str, token_data: dict[str, An
 async def get_token(user_id: uuid.UUID, provider: str) -> dict[str, Any] | None:
     """Return the stored token dict for a (user, provider) pair, or None if missing.
 
-    Note: token refresh logic will be added in Phase 6c.
+    Automatically refreshes the token server-side if it is within 5 minutes of
+    expiration and a refresh_token is present.
     """
     async with AsyncSessionLocal() as session:
         result = await session.execute(
@@ -70,13 +71,45 @@ async def get_token(user_id: uuid.UUID, provider: str) -> dict[str, Any] | None:
         row: OAuthToken | None = result.scalar_one_or_none()
         if row is None:
             return None
-        return {
-            "access_token": row.access_token,
-            "refresh_token": row.refresh_token,
-            "expires_at": row.expires_at,
-            "scope": row.scope,
-            "provider": row.provider,
-        }
+
+        access_token = row.access_token
+        refresh_token = row.refresh_token
+        expires_at = row.expires_at
+        scope = row.scope
+
+    # Check if token is expired or within 5 minutes of expiry
+    if expires_at is not None and refresh_token:
+        time_until_expiry = (expires_at - datetime.now(tz=timezone.utc)).total_seconds()
+        if time_until_expiry < 300:  # < 5 minutes
+            if provider == "google":
+                from api.auth.refresh import refresh_google_token
+                try:
+                    new_access_token, new_expires_at = await refresh_google_token(refresh_token)
+                    await update_token(user_id, provider, new_access_token, new_expires_at)
+                    access_token = new_access_token
+                    expires_at = new_expires_at
+                except Exception:
+                    # If refresh fails temporarily, return existing token or let downstream handle
+                    pass
+            elif provider == "github":
+                from api.auth.refresh import refresh_github_token
+                try:
+                    refreshed = await refresh_github_token(refresh_token)
+                    if refreshed:
+                        new_access_token, new_expires_at = refreshed
+                        await update_token(user_id, provider, new_access_token, new_expires_at)
+                        access_token = new_access_token
+                        expires_at = new_expires_at
+                except Exception:
+                    pass
+
+    return {
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "expires_at": expires_at,
+        "scope": scope,
+        "provider": provider,
+    }
 
 
 async def update_token(
