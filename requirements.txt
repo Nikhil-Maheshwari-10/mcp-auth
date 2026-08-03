@@ -2,3 +2,8 @@ requests
 python-dotenv
 fastmcp
 google-adk
+
+# Database
+sqlalchemy[asyncio]
+asyncpg
+alembic
