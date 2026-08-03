@@ -1,39 +1,37 @@
-import datetime
-import requests
+from datetime import datetime, timezone
+import httpx
 from mcp_server import mcp
 from mcp_server.tools.common import require_token
-from oauth.google import token_store
+
 
 @mcp.tool
-def google_list_calendar_events(max_results: int = 5) -> list[dict]:
+async def google_list_calendar_events(max_results: int = 5, user_id: str = "") -> list[dict]:
     """List the next upcoming Google Calendar events for the authenticated user.
 
     Args:
         max_results: Number of events to return (default 5, max 20).
+        user_id: The UUID of the user whose calendar to fetch (optional if set in context).
 
     Returns:
         A list of dicts, each with: summary, start, end, location, meet_link.
-
-    Requires calendar.readonly scope — run `python -m oauth.google.auth` to re-auth
-    if you haven't added this scope yet.
     """
-    token = require_token(token_store)
+    token = await require_token(user_id, "google")
     max_results = min(max_results, 20)
-    now = datetime.datetime.utcnow().isoformat() + "Z"
+    now = datetime.now(tz=timezone.utc).isoformat()
 
-    resp = requests.get(
-        "https://www.googleapis.com/calendar/v3/calendars/primary/events",
-        headers={"Authorization": f"Bearer {token['access_token']}"},
-        params={
-            "maxResults": max_results,
-            "orderBy": "startTime",
-            "singleEvents": True,
-            "timeMin": now,
-        },
-        timeout=10,
-    )
-    resp.raise_for_status()
-    items = resp.json().get("items", [])
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        resp = await client.get(
+            "https://www.googleapis.com/calendar/v3/calendars/primary/events",
+            headers={"Authorization": f"Bearer {token['access_token']}"},
+            params={
+                "maxResults": max_results,
+                "orderBy": "startTime",
+                "singleEvents": True,
+                "timeMin": now,
+            },
+        )
+        resp.raise_for_status()
+        items = resp.json().get("items", [])
 
     results = []
     for item in items:

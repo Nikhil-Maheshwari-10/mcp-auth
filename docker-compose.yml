@@ -44,6 +44,31 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+  mcp:
+    build:
+      context: .
+      dockerfile: mcp_server/Dockerfile
+    container_name: mcp
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  adk:
+    build:
+      context: .
+      dockerfile: adk_agent/Dockerfile
+    container_name: adk
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mcp:
+        condition: service_started
 
 volumes:
   postgres_data:
