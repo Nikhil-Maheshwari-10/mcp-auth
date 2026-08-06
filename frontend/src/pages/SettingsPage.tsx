@@ -16,6 +16,7 @@ interface ToolItem {
   description: string
   provider: 'google' | 'github'
   category: 'gmail' | 'calendar' | 'github'
+  scopeType?: 'read' | 'write'
 }
 
 const ALL_TOOLS: ToolItem[] = [
@@ -27,6 +28,7 @@ const ALL_TOOLS: ToolItem[] = [
     description: 'Fetches full body text, headers, and sender information with clean text extraction.',
     provider: 'google',
     category: 'gmail',
+    scopeType: 'read',
   },
   {
     id: 'gmail_search_emails',
@@ -35,6 +37,7 @@ const ALL_TOOLS: ToolItem[] = [
     description: 'Searches messages across Gmail using operators (is:unread, from:, has:attachment).',
     provider: 'google',
     category: 'gmail',
+    scopeType: 'read',
   },
   {
     id: 'gmail_mark_as_read',
@@ -43,6 +46,7 @@ const ALL_TOOLS: ToolItem[] = [
     description: 'Removes the UNREAD label from any specified email message.',
     provider: 'google',
     category: 'gmail',
+    scopeType: 'write',
   },
   {
     id: 'google_list_emails',
@@ -51,6 +55,7 @@ const ALL_TOOLS: ToolItem[] = [
     description: 'Lists recent inbox messages with subject lines, snippets, and timestamps.',
     provider: 'google',
     category: 'gmail',
+    scopeType: 'read',
   },
   {
     id: 'gmail_send',
@@ -59,6 +64,7 @@ const ALL_TOOLS: ToolItem[] = [
     description: 'Drafts and sends emails to recipients with CC and BCC options.',
     provider: 'google',
     category: 'gmail',
+    scopeType: 'write',
   },
   {
     id: 'gmail_reply',
@@ -67,6 +73,7 @@ const ALL_TOOLS: ToolItem[] = [
     description: 'Sends a contextual reply to an existing email conversation thread.',
     provider: 'google',
     category: 'gmail',
+    scopeType: 'write',
   },
   {
     id: 'gmail_archive',
@@ -75,6 +82,7 @@ const ALL_TOOLS: ToolItem[] = [
     description: 'Archives emails out of the primary inbox folder.',
     provider: 'google',
     category: 'gmail',
+    scopeType: 'write',
   },
   {
     id: 'google_whoami',
@@ -83,6 +91,7 @@ const ALL_TOOLS: ToolItem[] = [
     description: 'Verifies the connected Google account identity and email address.',
     provider: 'google',
     category: 'gmail',
+    scopeType: 'read',
   },
 
   // ─── Calendar Tools (6) ───
@@ -93,6 +102,7 @@ const ALL_TOOLS: ToolItem[] = [
     description: 'Searches meetings and events by keyword and custom date/time ranges.',
     provider: 'google',
     category: 'calendar',
+    scopeType: 'read',
   },
   {
     id: 'calendar_get_event',
@@ -101,6 +111,7 @@ const ALL_TOOLS: ToolItem[] = [
     description: 'Retrieves complete event details, attendees status, notes, and video conference links.',
     provider: 'google',
     category: 'calendar',
+    scopeType: 'read',
   },
   {
     id: 'google_list_calendar_events',
@@ -109,6 +120,7 @@ const ALL_TOOLS: ToolItem[] = [
     description: 'Lists upcoming calendar events and meetings from primary calendar.',
     provider: 'google',
     category: 'calendar',
+    scopeType: 'read',
   },
   {
     id: 'calendar_create_event',
@@ -117,6 +129,7 @@ const ALL_TOOLS: ToolItem[] = [
     description: 'Creates and schedules new calendar meetings with attendees and location.',
     provider: 'google',
     category: 'calendar',
+    scopeType: 'write',
   },
   {
     id: 'calendar_update_event',
@@ -125,6 +138,7 @@ const ALL_TOOLS: ToolItem[] = [
     description: 'Modifies event summary, start/end time, description, or attendees.',
     provider: 'google',
     category: 'calendar',
+    scopeType: 'write',
   },
   {
     id: 'calendar_delete_event',
@@ -133,6 +147,7 @@ const ALL_TOOLS: ToolItem[] = [
     description: 'Deletes or cancels scheduled calendar events.',
     provider: 'google',
     category: 'calendar',
+    scopeType: 'write',
   },
 
   // ─── GitHub Tools (11) ───
@@ -250,6 +265,7 @@ export default function SettingsPage() {
 
   const githubConnected = !!profile?.connected_providers?.github?.connected
   const githubUsername = profile?.connected_providers?.github?.username
+  const googleConnected = !!profile?.email
   const googleName = profile?.connected_providers?.google?.username
   const justConnected = params.get('github') === 'connected'
   const justReauthed = params.get('reauth') === 'success'
@@ -586,43 +602,43 @@ export default function SettingsPage() {
                 </div>
               ) : (
                 filteredTools.map((tool) => {
-                  const calendarToolBlocked = tool.category === 'calendar' && calendarMissing
-                  const gmailToolBlocked = tool.category === 'gmail' && gmailMissing
+                  const isWriteTool = tool.scopeType === 'write'
+                  const isScopeBlocked = isWriteTool && (
+                    (tool.category === 'calendar' && calendarMissing) ||
+                    (tool.category === 'gmail' && gmailMissing)
+                  )
                   const isAvailable = tool.provider === 'google'
-                    ? (!calendarToolBlocked && !gmailToolBlocked)
+                    ? (googleConnected && !isScopeBlocked)
                     : githubConnected
-                  const isScopeBlocked = tool.provider === 'google' && (calendarToolBlocked || gmailToolBlocked)
+
                   return (
                     <div key={tool.id} className="account-row">
                       <div style={{ fontSize: 22, width: 40, textAlign: 'center' }}>{tool.icon}</div>
                       <div className="account-info">
-                        <div className="account-name" style={{ fontSize: 14, marginBottom: 2 }}>{tool.name}</div>
-                        <div className="account-detail">{tool.description}</div>
-                        <div className="account-linked-to" style={{ textTransform: 'capitalize' }}>
-                          Provider: {tool.provider === 'google' ? 'Google Workspace' : 'GitHub'}
+                        <div className="account-name" style={{ fontSize: 14, marginBottom: 2 }}>
+                          {tool.name}
+                          {isWriteTool && (
+                            <span style={{ fontSize: 10, padding: '2px 6px', background: 'rgba(99,102,241,0.12)', color: 'var(--accent-light)', borderRadius: 4, marginLeft: 8, fontWeight: 600 }}>
+                              WRITE
+                            </span>
+                          )}
                         </div>
+                        <div className="account-detail">{tool.description}</div>
                       </div>
-                      <div>
+                      <div className="account-status">
                         {isAvailable ? (
-                          <span className="badge badge-connected">Active</span>
+                          <span className="badge badge-connected">✓ Active</span>
                         ) : isScopeBlocked ? (
                           <a
                             href={getGoogleReauthUrl()}
-                            className="badge badge-disconnected"
-                            style={{ textDecoration: 'none', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                            className="badge"
+                            style={{ background: 'rgba(245,158,11,0.1)', color: 'var(--warning)', border: '1px solid rgba(245,158,11,0.25)', textDecoration: 'none', cursor: 'pointer', whiteSpace: 'nowrap' }}
                             title={`Grant ${tool.category} permission to enable this tool`}
                           >
-                            Grant Access
+                            🔑 Re-authorize
                           </a>
                         ) : (
-                          <a
-                            href={getGitHubConnectUrl()}
-                            className="badge badge-disconnected"
-                            style={{ textDecoration: 'none', cursor: 'pointer' }}
-                            title="Connect GitHub to enable this tool"
-                          >
-                            Connect GitHub
-                          </a>
+                          <span className="badge badge-disconnected">Unavailable</span>
                         )}
                       </div>
                     </div>
@@ -678,14 +694,7 @@ export default function SettingsPage() {
             boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
-              <div style={{
-                width: 40, height: 40, borderRadius: '50%',
-                background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 20, flexShrink: 0
-              }}>
-                ⚠️
-              </div>
+              <span style={{ fontSize: 32, flexShrink: 0, lineHeight: 1 }}>⚠️</span>
               <div>
                 <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: 'var(--text-primary)' }}>
                   Sign out of Workspace?

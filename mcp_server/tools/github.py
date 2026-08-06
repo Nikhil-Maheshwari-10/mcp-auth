@@ -2,7 +2,7 @@ import httpx
 from core.logger import logger
 from core.messages import TOOL_GITHUB_ERROR, INTERNAL_ERROR
 from mcp_server import mcp
-from mcp_server.tools.common import require_token, build_github_headers
+from mcp_server.tools.common import require_token, build_github_headers, check_and_mark_call
 
 
 def _github_err(context: str, exc: Exception) -> str:
@@ -170,6 +170,8 @@ async def github_create_issue(
     user_id: str = "",
 ) -> dict:
     """Create a new issue in a GitHub repository."""
+    if check_and_mark_call("github_create_issue", {"repo": repo_full_name, "title": title}):
+        return {"status": "skipped", "reason": "duplicate call blocked"}
     try:
         token = await require_token(user_id, "github")
         logger.info(f"Creating issue in '{repo_full_name}': '{title}'")
@@ -207,6 +209,8 @@ async def github_comment_on_issue(
     user_id: str = "",
 ) -> dict:
     """Post a comment on a GitHub issue or pull request."""
+    if check_and_mark_call("github_comment_on_issue", {"repo": repo_full_name, "issue": issue_number}):
+        return {"status": "skipped", "reason": "duplicate call blocked"}
     try:
         token = await require_token(user_id, "github")
         logger.info(f"Adding comment to #{issue_number} in '{repo_full_name}'")
@@ -237,6 +241,8 @@ async def github_close_issue(
     user_id: str = "",
 ) -> dict:
     """Close an open issue in a GitHub repository."""
+    if check_and_mark_call("github_close_issue", {"repo": repo_full_name, "issue": issue_number}):
+        return {"status": "skipped", "reason": "duplicate call blocked"}
     try:
         token = await require_token(user_id, "github")
         logger.info(f"Closing issue #{issue_number} in '{repo_full_name}'")
@@ -271,6 +277,8 @@ async def github_create_pr(
     user_id: str = "",
 ) -> dict:
     """Create a pull request in a GitHub repository."""
+    if check_and_mark_call("github_create_pr", {"repo": repo_full_name, "title": title, "head": head}):
+        return {"status": "skipped", "reason": "duplicate call blocked"}
     try:
         token = await require_token(user_id, "github")
         logger.info(f"Creating PR '{title}' ({head} -> {base}) in '{repo_full_name}'")

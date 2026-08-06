@@ -2,7 +2,7 @@ import httpx
 from core.logger import logger
 from core.messages import TOOL_GMAIL_ERROR, INTERNAL_ERROR
 from mcp_server import mcp
-from mcp_server.tools.common import require_token
+from mcp_server.tools.common import require_token, check_and_mark_call
 
 
 def _gmail_err(context: str, exc: Exception) -> str:
@@ -136,6 +136,8 @@ async def gmail_send(to: str, subject: str, body: str, user_id: str = "") -> dic
     import base64
     from email.message import EmailMessage
 
+    if check_and_mark_call("gmail_send", {"to": to, "subject": subject}):
+        return {"status": "skipped", "reason": "duplicate call blocked"}
     try:
         token = await require_token(user_id, "google")
         if not _has_gmail_write_scope(token):
@@ -178,6 +180,8 @@ async def gmail_reply(thread_id: str, to: str, subject: str, body: str, user_id:
     import base64
     from email.message import EmailMessage
 
+    if check_and_mark_call("gmail_reply", {"thread_id": thread_id, "to": to}):
+        return {"status": "skipped", "reason": "duplicate call blocked"}
     try:
         token = await require_token(user_id, "google")
         if not _has_gmail_write_scope(token):
@@ -216,6 +220,8 @@ async def gmail_reply(thread_id: str, to: str, subject: str, body: str, user_id:
 @mcp.tool
 async def gmail_archive(message_id: str, user_id: str = "") -> dict:
     """Archive a Gmail message by removing it from the INBOX."""
+    if check_and_mark_call("gmail_archive", {"message_id": message_id}):
+        return {"status": "skipped", "reason": "duplicate call blocked"}
     try:
         token = await require_token(user_id, "google")
         if not _has_gmail_write_scope(token):
@@ -385,6 +391,8 @@ async def gmail_search_emails(
 @mcp.tool
 async def gmail_mark_as_read(message_id: str, user_id: str = "") -> dict:
     """Mark an unread Gmail message as read."""
+    if check_and_mark_call("gmail_mark_as_read", {"message_id": message_id}):
+        return {"status": "skipped", "reason": "duplicate call blocked"}
     try:
         token = await require_token(user_id, "google")
         if not _has_gmail_write_scope(token):

@@ -59,14 +59,14 @@ export default function LoginPage({ error }: Props) {
         </a>
 
         <div className="login-divider">
-          <span>what you get access to</span>
+          <span>what you can do</span>
         </div>
 
         <ul className="login-features">
-          <li><span>📧</span> Read your Gmail inbox and conversations</li>
-          <li><span>📅</span> View upcoming Google Calendar events</li>
-          <li><span>🐙</span> Browse GitHub repos, issues & pull requests</li>
-          <li><span>🔐</span> Tokens stay on-server — never in your browser</li>
+          <li><span>📧</span> <span>Read, search, compose & reply to Gmail emails</span></li>
+          <li><span>📅</span> <span>View, search, create & manage Calendar events</span></li>
+          <li><span>🐙</span> <span>Inspect repos, issues & create GitHub pull requests</span></li>
+          <li><span>⚡</span> <span>Execute multi-step AI agent workflows in real time</span></li>
         </ul>
       </div>
     </div>

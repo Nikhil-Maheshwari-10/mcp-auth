@@ -1,8 +1,7 @@
 """
-oauth.github — GitHub OAuth2 authentication sub-package.
+oauth/github — Core GitHub OAuth2 business logic.
 
-Modules:
-  config.py    — loads GitHub credentials from environment
-  auth.py      — builds the authorization URL and exchanges the code for a token
-  callback.py  — runs a local listener to receive the OAuth redirect
+Contains pure functions for building auth URLs and exchanging authorization codes.
+Has no dependency on FastAPI or HTTP request objects — import and call from
+api/auth/github.py (routes) or tests.
 """

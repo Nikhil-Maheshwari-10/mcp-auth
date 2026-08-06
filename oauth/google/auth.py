@@ -1,125 +1,170 @@
 """
-Builds the Google authorization URL and exchanges the returned code for a token.
+oauth/google/auth.py — Core Google OAuth2 logic.
 
-Entry point for the Google OAuth2 + PKCE flow:
-  1. Generate PKCE verifier + challenge
-  2. Build the authorization URL and open it in the browser
-  3. Start the local callback listener and wait for the redirect
-  4. Exchange the authorization code for access + refresh tokens
-  5. Print the tokens (no storage yet — that's a later phase)
+Pure functions — no FastAPI, no HTTP request objects.
+Called by api/auth/google.py (FastAPI routes) and usable in tests independently.
 
-Run directly:
-    python3 -m oauth.google.auth
+Public API:
+    SCOPES                 — list of OAuth scopes requested
+    build_auth_url(...)    — constructs the Google authorization URL
+    exchange_code(...)     — exchanges an auth code for tokens + userinfo
+    detect_missing_scopes(granted_scope_str) → list[str]
 """
 
-import json
+import os
 import secrets
-import webbrowser
+from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode
 
-import requests
+import httpx
+from dotenv import load_dotenv
 
-from oauth.common.pkce import generate_code_challenge, generate_code_verifier
-from oauth.google import config
-from oauth.google.callback import wait_for_callback
-from oauth.google import token_store
+from core.logger import logger
+from core.messages import GOOGLE_SCOPE_GROUPS
+from oauth.common.pkce import generate_code_verifier, generate_code_challenge
 
+load_dotenv()
 
-# Scopes — profile + Gmail + Calendar read access.
+# ── OAuth Endpoints ────────────────────────────────────────────────────────────
+
+AUTH_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth"
+TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token"
+USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
+
+# ── OAuth Scopes ───────────────────────────────────────────────────────────────
+
 SCOPES = [
     "openid",
     "https://www.googleapis.com/auth/userinfo.email",
     "https://www.googleapis.com/auth/userinfo.profile",
     "https://www.googleapis.com/auth/gmail.readonly",
+    "https://www.googleapis.com/auth/gmail.send",
+    "https://www.googleapis.com/auth/gmail.modify",
     "https://www.googleapis.com/auth/calendar.readonly",
+    "https://www.googleapis.com/auth/calendar.events",
 ]
 
+# ── Credentials (read once at import time) ─────────────────────────────────────
 
-def build_authorization_url(code_challenge: str, state: str) -> str:
-    """Construct the Google authorization URL with PKCE and all required params."""
-    params = {
-        "client_id": config.CLIENT_ID,
-        "redirect_uri": config.REDIRECT_URI,
+CLIENT_ID: str = os.environ["GOOGLE_CLIENT_ID"]
+CLIENT_SECRET: str = os.environ["GOOGLE_CLIENT_SECRET"]
+
+
+# ── Core Functions ─────────────────────────────────────────────────────────────
+
+def detect_missing_scopes(granted_scope_str: str) -> list[str]:
+    """Return scope category names that were NOT granted by the user.
+
+    Args:
+        granted_scope_str: Space-separated scope string returned by Google token endpoint.
+
+    Returns:
+        List of category names (e.g. ['gmail', 'calendar']) whose required scopes
+        are absent from the granted set. Empty list means full consent was given.
+    """
+    granted = set(granted_scope_str.split())
+    return [
+        name
+        for name, required in GOOGLE_SCOPE_GROUPS.items()
+        if not all(s in granted for s in required)
+    ]
+
+
+def build_auth_url(
+    redirect_uri: str,
+    code_challenge: str,
+    state: str,
+    login_hint: str | None = None,
+) -> str:
+    """Build the Google OAuth2 authorization URL.
+
+    Args:
+        redirect_uri:    Where Google should send the user after consent.
+        code_challenge:  PKCE code challenge (S256).
+        state:           Opaque CSRF state token.
+        login_hint:      Pre-fill the Google account picker with this email.
+
+    Returns:
+        Full authorization URL to redirect the browser to.
+    """
+    params: dict[str, str] = {
+        "client_id": CLIENT_ID,
+        "redirect_uri": redirect_uri,
         "response_type": "code",
         "scope": " ".join(SCOPES),
         "code_challenge": code_challenge,
         "code_challenge_method": "S256",
         "state": state,
-        "access_type": "offline",   # request a refresh_token alongside the access_token
-        "prompt": "consent",        # force consent screen so refresh_token is always returned
+        "access_type": "offline",
+        "prompt": "consent",
+        "include_granted_scopes": "true",
     }
-    return f"{config.AUTH_ENDPOINT}?{urlencode(params)}"
+    if login_hint:
+        params["login_hint"] = login_hint
+    return f"{AUTH_ENDPOINT}?{urlencode(params)}"
 
 
-def exchange_code_for_token(code: str, code_verifier: str) -> dict:
-    """POST the authorization code + PKCE verifier to Google's token endpoint.
+def generate_pkce_state() -> tuple[str, str, str]:
+    """Generate a fresh PKCE verifier, challenge, and state token.
 
-    Returns the full token response dict, which includes:
-        access_token, refresh_token, expires_in, token_type, id_token
+    Returns:
+        (code_verifier, code_challenge, state)
     """
-    payload = {
-        "client_id": config.CLIENT_ID,
-        "client_secret": config.CLIENT_SECRET,
-        "redirect_uri": config.REDIRECT_URI,
-        "grant_type": "authorization_code",
-        "code": code,
-        "code_verifier": code_verifier,
-    }
-    response = requests.post(config.TOKEN_ENDPOINT, data=payload, timeout=10)
-    response.raise_for_status()
-    return response.json()
-
-
-def run() -> None:
-    """Execute the full Google OAuth2 + PKCE flow end-to-end.
-
-    If a valid token already exists on disk, skips the browser flow entirely
-    and returns the cached token. Runs the full flow only when no token is
-    stored or the stored token cannot be refreshed.
-    """
-    # --- Check for existing valid token first ---
-    existing = token_store.get_valid_token()
-    if existing:
-        print("\n✅ Google: using existing token (no login needed)\n")
-        print(json.dumps(existing, indent=2))
-        return
-
-    # --- Step 1: PKCE ---
     code_verifier = generate_code_verifier()
     code_challenge = generate_code_challenge(code_verifier)
-    state = secrets.token_urlsafe(16)  # CSRF protection
+    state = secrets.token_urlsafe(16)
+    return code_verifier, code_challenge, state
 
-    # --- Step 2: Build URL and open browser ---
-    auth_url = build_authorization_url(code_challenge, state)
-    print("\n[Google OAuth] Opening browser for authorization...")
-    print(f"  URL: {auth_url}\n")
-    webbrowser.open(auth_url)
 
-    # --- Step 3: Wait for redirect ---
-    port = int(config.REDIRECT_URI.split(":")[-1].split("/")[0])
-    print(f"[Google OAuth] Waiting for callback on port {port}...")
-    auth_code, returned_state = wait_for_callback(port=port)
+async def exchange_code(
+    code: str,
+    code_verifier: str,
+    redirect_uri: str,
+) -> tuple[dict, dict]:
+    """Exchange an authorization code for tokens and userinfo.
 
-    # Verify state to prevent CSRF
-    if returned_state != state:
-        raise RuntimeError(
-            f"State mismatch — possible CSRF attack.\n"
-            f"  Expected: {state}\n"
-            f"  Got:      {returned_state}"
+    Args:
+        code:          The authorization code received from Google's callback.
+        code_verifier: The PKCE verifier that matches the challenge sent in the auth URL.
+        redirect_uri:  Must exactly match the redirect_uri used in the auth URL.
+
+    Returns:
+        (token_data, userinfo) — both dicts from Google APIs.
+        token_data keys: access_token, refresh_token (maybe), expires_in, scope, ...
+        userinfo keys: email, name, sub, picture, ...
+
+    Raises:
+        httpx.HTTPStatusError: On non-2xx response from Google.
+        Exception: On network or unexpected error.
+    """
+    async with httpx.AsyncClient() as client:
+        token_resp = await client.post(
+            TOKEN_ENDPOINT,
+            data={
+                "client_id": CLIENT_ID,
+                "client_secret": CLIENT_SECRET,
+                "redirect_uri": redirect_uri,
+                "grant_type": "authorization_code",
+                "code": code,
+                "code_verifier": code_verifier,
+            },
         )
+        token_resp.raise_for_status()
+        token_data = token_resp.json()
 
-    # --- Step 4: Exchange code for tokens ---
-    print("[Google OAuth] Exchanging authorization code for tokens...")
-    token_data = exchange_code_for_token(auth_code, code_verifier)
+        userinfo_resp = await client.get(
+            USERINFO_URL,
+            headers={"Authorization": f"Bearer {token_data['access_token']}"},
+        )
+        userinfo_resp.raise_for_status()
+        userinfo = userinfo_resp.json()
 
-    # --- Step 5: Save to disk ---
-    token_store.save_token(token_data)
-
-    # --- Step 6: Print result ---
-    print("\n✅ Google OAuth successful!\n")
-    print(json.dumps(token_data, indent=2))
+    logger.debug(f"[GOOGLE AUTH] Token exchange successful for '{userinfo.get('email')}'")
+    return token_data, userinfo
 
 
-if __name__ == "__main__":
-    run()
-
+def token_expires_at(token_data: dict) -> datetime:
+    """Compute the token expiry datetime from a token_data dict."""
+    return datetime.now(tz=timezone.utc) + timedelta(
+        seconds=token_data.get("expires_in", 3600)
+    )

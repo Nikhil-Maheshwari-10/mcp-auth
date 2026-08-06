@@ -148,15 +148,16 @@ body {
 
 .login-features {
   list-style: none;
-  margin-top: 32px;
-  display: flex; flex-direction: column; gap: 10px;
+  margin-top: 24px;
+  display: flex; flex-direction: column; gap: 12px;
 }
 .login-features li {
-  display: flex; align-items: center; gap: 10px;
+  display: flex; align-items: flex-start; gap: 12px;
   font-size: 13px; color: var(--text-secondary);
+  line-height: 1.45;
 }
 .login-features li span:first-child {
-  font-size: 16px; width: 22px; text-align: center;
+  font-size: 16px; width: 22px; text-align: center; flex-shrink: 0;
 }
 
 /* ─── Buttons ────────────────────────────────────────── */
@@ -509,6 +510,82 @@ body {
 .message-bubble.agent pre code { background: none; padding: 0; }
 .message-bubble.agent strong { color: var(--text-primary); font-weight: 600; }
 
+/* Headers inside Markdown */
+.message-bubble.agent h1,
+.message-bubble.agent h2,
+.message-bubble.agent h3,
+.message-bubble.agent h4 {
+  color: var(--text-primary);
+  font-weight: 600;
+  margin: 14px 0 8px 0;
+  line-height: 1.35;
+}
+.message-bubble.agent h1:first-child,
+.message-bubble.agent h2:first-child,
+.message-bubble.agent h3:first-child {
+  margin-top: 0;
+}
+.message-bubble.agent h1 { font-size: 16px; margin: 16px 0 8px 0; }
+.message-bubble.agent h2 { font-size: 15px; color: var(--text-primary); margin: 14px 0 6px 0; }
+.message-bubble.agent h3 { font-size: 14px; color: var(--accent-light); margin: 12px 0 6px 0; }
+
+/* Horizontal rules (---) - completely hidden */
+.message-bubble.agent hr,
+.message-bubble hr {
+  display: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  height: 0 !important;
+  border: none !important;
+}
+
+/* Glassmorphic Tables */
+.message-bubble.agent table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  margin: 12px 0;
+  font-size: 12.5px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.message-bubble.agent th {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-primary);
+  font-weight: 600;
+  text-align: left;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.message-bubble.agent td {
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  color: var(--text-secondary);
+}
+
+.message-bubble.agent tr:last-child td {
+  border-bottom: none;
+}
+
+.message-bubble.agent tr:hover td {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+/* Blockquotes */
+.message-bubble.agent blockquote {
+  border-left: 3px solid var(--accent);
+  padding: 6px 14px;
+  margin: 10px 0;
+  background: var(--accent-dim);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
 /* Typing indicator */
 .typing-dots { display: flex; align-items: center; gap: 4px; padding: 4px 0; }
 .typing-dots span {
@@ -561,12 +638,12 @@ body {
 
 .input-wrapper {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   gap: 10px;
   background: var(--bg-surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  padding: 8px 8px 8px 16px;
+  padding: 8px 12px 8px 16px;
   transition: border-color var(--transition);
 }
 .input-wrapper:focus-within { border-color: var(--border-focus); box-shadow: 0 0 0 3px var(--accent-dim); }
@@ -582,8 +659,9 @@ body {
   outline: none;
   min-height: 24px;
   max-height: 160px;
-  line-height: 1.5;
-  padding: 4px 0;
+  line-height: 1.4;
+  padding: 6px 0;
+  margin: 0;
 }
 .message-input::placeholder { color: var(--text-muted); }
 
@@ -1042,4 +1120,74 @@ body {
     font-size: 12px;
   }
 }
+
+/* ─── Auth Action Cards & Connection Status Badges ────────────── */
+.auth-action-card {
+  margin-top: 12px;
+  padding: 12px 14px;
+  background: rgba(99, 102, 241, 0.08);
+  border: 1px solid rgba(99, 102, 241, 0.25);
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.auth-action-card-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.auth-action-card-title {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--text-primary);
+  margin-bottom: 2px;
+}
+
+.auth-action-card-desc {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.topbar-provider-pills {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.provider-pill {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  padding: 3px 9px;
+  transition: all 0.15s ease;
+}
+
+.provider-pill.connected {
+  border-color: rgba(34, 197, 94, 0.3);
+  color: var(--text-primary);
+}
+
+.provider-pill-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #64748b;
+}
+
+.provider-pill-dot.active {
+  background: #22c55e;
+  box-shadow: 0 0 6px rgba(34, 197, 94, 0.6);
+}
+
 

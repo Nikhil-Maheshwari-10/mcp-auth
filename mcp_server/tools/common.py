@@ -2,6 +2,8 @@
 Common helpers for MCP tools — token retrieval from PostgreSQL and header builders.
 """
 
+import hashlib
+import json
 import os
 import uuid
 from contextvars import ContextVar
@@ -14,6 +16,51 @@ from db.token_repo import get_token
 _current_user_id_var: ContextVar[uuid.UUID | None] = ContextVar(
     "current_user_id", default=None
 )
+
+# ── Per-turn deduplication ────────────────────────────────────────────────────
+# Tracks (tool_name, args_hash) pairs seen in the current agent turn.
+# Stored in a ContextVar so it is isolated per asyncio task (i.e. per ADK turn).
+# Reset at the start of each new turn via reset_turn_dedup().
+_seen_calls_var: ContextVar[set[str]] = ContextVar("seen_calls", default=set())
+
+
+def reset_turn_dedup() -> None:
+    """Reset the deduplication state for a new agent turn.
+
+    Call this at the start of every new user → agent round-trip so that the
+    seen-calls set is cleared and tools can be legitimately called again.
+    """
+    _seen_calls_var.set(set())
+
+
+def _call_fingerprint(tool_name: str, args: dict[str, Any]) -> str:
+    """Compute a stable fingerprint string for a (tool_name, args) pair."""
+    args_str = json.dumps(args, sort_keys=True, default=str)
+    args_hash = hashlib.sha256(args_str.encode()).hexdigest()[:16]
+    return f"{tool_name}:{args_hash}"
+
+
+def check_and_mark_call(tool_name: str, args: dict[str, Any]) -> bool:
+    """Check if this (tool_name, args) was already executed this turn.
+
+    Returns True if it is a DUPLICATE (should be skipped).
+    Returns False if it is NEW (safe to execute — marks it as seen).
+
+    This is the backend safety net that complements the system prompt rule.
+    It prevents the LLM from executing the same write action twice in one turn
+    even if it hallucinates a duplicate tool call.
+    """
+    fingerprint = _call_fingerprint(tool_name, args)
+    seen = _seen_calls_var.get()
+    if fingerprint in seen:
+        logger.warning(
+            f"[DEDUP] Duplicate tool call blocked: {tool_name}({list(args.items())[:3]!r})"
+        )
+        return True  # duplicate
+    # Mark as seen — copy the set to avoid mutating a shared default
+    new_seen = seen | {fingerprint}
+    _seen_calls_var.set(new_seen)
+    return False  # new call, proceed
 
 
 def set_context_user_id(user_id: uuid.UUID | str | None) -> None:
@@ -89,3 +136,25 @@ def build_github_headers(token: dict[str, Any]) -> dict[str, str]:
         "X-GitHub-Api-Version": "2022-11-28",
     }
 
+
+async def record_audit_log(
+    user_id: uuid.UUID | str | None,
+    tool_name: str,
+    status: str,
+    error_msg: str | None = None,
+) -> None:
+    """Record an entry in audit_logs table for the tool execution."""
+    from db.audit_repo import log_tool_call
+    uid: uuid.UUID | None = None
+    if user_id:
+        if isinstance(user_id, str):
+            try:
+                uid = uuid.UUID(user_id.strip())
+            except ValueError:
+                pass
+        else:
+            uid = user_id
+    if uid is None:
+        uid = get_user_id_from_context()
+    if uid:
+        await log_tool_call(uid, tool_name, status, error_msg)

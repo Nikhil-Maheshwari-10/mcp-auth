@@ -102,3 +102,26 @@ class Session(Base):
 
     def __repr__(self) -> str:
         return f"<Session id={self.id} user={self.user_id}>"
+
+
+class AuditLog(Base):
+    __tablename__ = "audit_logs"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    tool_name: Mapped[str] = mapped_column(String(128), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)  # 'ok' or 'error'
+    error_msg: Mapped[str | None] = mapped_column(Text, nullable=True)
+    called_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    user: Mapped["User"] = relationship("User")
+
+    def __repr__(self) -> str:
+        return f"<AuditLog tool={self.tool_name} user={self.user_id} status={self.status}>"
+

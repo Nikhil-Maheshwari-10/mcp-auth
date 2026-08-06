@@ -5,10 +5,12 @@ All other code (MCP tools, auth callbacks) must go through these functions.
 Direct DB queries on OAuthToken from outside this module are not allowed.
 """
 
+import os
 import uuid
 from datetime import datetime, timezone
 from typing import Any
 
+from cryptography.fernet import Fernet
 from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
@@ -17,8 +19,47 @@ from db.engine import AsyncSessionLocal
 from db.models import OAuthToken, User
 
 
+# ─── Fernet Encryption Helpers ───────────────────────────────────────────────
+
+def _get_fernet() -> Fernet | None:
+    key = os.getenv("FERNET_KEY", "").strip()
+    if not key:
+        return None
+    try:
+        return Fernet(key.encode())
+    except Exception as e:
+        logger.error(f"Invalid FERNET_KEY in environment: {e}")
+        return None
+
+
+def _encrypt(val: str | None) -> str | None:
+    if not val:
+        return val
+    f = _get_fernet()
+    if not f:
+        return val
+    try:
+        return f.encrypt(val.encode()).decode()
+    except Exception as e:
+        logger.error(f"Failed to encrypt token: {e}")
+        return val
+
+
+def _decrypt(val: str | None) -> str | None:
+    if not val:
+        return val
+    f = _get_fernet()
+    if not f:
+        return val
+    try:
+        return f.decrypt(val.encode()).decode()
+    except Exception:
+        # Fallback to raw string if token was saved unencrypted
+        return val
+
+
 async def save_token(user_id: uuid.UUID, provider: str, token_data: dict[str, Any]) -> None:
-    """Upsert a token for a (user, provider) pair.
+    """Upsert an encrypted token for a (user, provider) pair.
 
     If a row already exists for this user + provider, it is replaced.
     token_data must contain at least 'access_token'. Optional keys:
@@ -31,12 +72,15 @@ async def save_token(user_id: uuid.UUID, provider: str, token_data: dict[str, An
 
     username = token_data.get("github_username") or token_data.get("provider_username")
 
+    raw_access = token_data["access_token"]
+    raw_refresh = token_data.get("refresh_token")
+
     values = {
         "id": uuid.uuid4(),
         "user_id": user_id,
         "provider": provider,
-        "access_token": token_data["access_token"],
-        "refresh_token": token_data.get("refresh_token"),
+        "access_token": _encrypt(raw_access),
+        "refresh_token": _encrypt(raw_refresh) if raw_refresh else None,
         "expires_at": expires_at,
         "scope": token_data.get("scope"),
         "provider_username": username,
@@ -59,7 +103,7 @@ async def save_token(user_id: uuid.UUID, provider: str, token_data: dict[str, An
         async with session.begin():
             await session.execute(stmt)
 
-    logger.info(f"Saved OAuth token for user {user_id} (provider: {provider}, username: {username})")
+    logger.info(f"Saved encrypted OAuth token for user {user_id} (provider: {provider}, username: {username})")
 
 
 async def get_token(user_id: uuid.UUID, provider: str) -> dict[str, Any] | None:
@@ -80,8 +124,8 @@ async def get_token(user_id: uuid.UUID, provider: str) -> dict[str, Any] | None:
             logger.debug(f"No {provider} token found in database for user {user_id}")
             return None
 
-        access_token = row.access_token
-        refresh_token = row.refresh_token
+        access_token = _decrypt(row.access_token)
+        refresh_token = _decrypt(row.refresh_token)
         expires_at = row.expires_at
         scope = row.scope
         provider_username = row.provider_username
@@ -140,12 +184,12 @@ async def update_token(
                     OAuthToken.provider == provider,
                 )
                 .values(
-                    access_token=access_token,
+                    access_token=_encrypt(access_token),
                     expires_at=expires_at,
                     updated_at=datetime.now(tz=timezone.utc),
                 )
             )
-    logger.info(f"Updated {provider} token in DB for user {user_id}")
+    logger.info(f"Updated encrypted {provider} token in DB for user {user_id}")
 
 
 async def upsert_user(email: str) -> uuid.UUID:

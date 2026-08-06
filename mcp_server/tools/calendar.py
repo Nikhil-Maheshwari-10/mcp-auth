@@ -3,7 +3,7 @@ import httpx
 from core.logger import logger
 from core.messages import TOOL_CALENDAR_ERROR, INTERNAL_ERROR
 from mcp_server import mcp
-from mcp_server.tools.common import require_token
+from mcp_server.tools.common import require_token, check_and_mark_call
 
 
 def _calendar_err(context: str, exc: Exception) -> str:
@@ -96,6 +96,8 @@ async def calendar_create_event(
     user_id: str = "",
 ) -> dict:
     """Create a new event in the user's primary Google Calendar."""
+    if check_and_mark_call("calendar_create_event", {"summary": summary, "start": start_time}):
+        return {"status": "skipped", "reason": "duplicate call blocked"}
     try:
         token = await require_token(user_id, "google")
         if not _has_calendar_scope(token):
@@ -147,6 +149,8 @@ async def calendar_update_event(
     user_id: str = "",
 ) -> dict:
     """Update an existing event in the user's primary Google Calendar."""
+    if check_and_mark_call("calendar_update_event", {"event_id": event_id}):
+        return {"status": "skipped", "reason": "duplicate call blocked"}
     try:
         token = await require_token(user_id, "google")
         if not _has_calendar_scope(token):
@@ -190,6 +194,8 @@ async def calendar_update_event(
 @mcp.tool
 async def calendar_delete_event(event_id: str, user_id: str = "") -> dict:
     """Delete an event from the user's primary Google Calendar."""
+    if check_and_mark_call("calendar_delete_event", {"event_id": event_id}):
+        return {"status": "skipped", "reason": "duplicate call blocked"}
     try:
         token = await require_token(user_id, "google")
         if not _has_calendar_scope(token):

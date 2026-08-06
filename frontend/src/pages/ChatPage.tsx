@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import {
   UserProfile,
   Session,
@@ -11,6 +12,7 @@ import {
   deleteSession,
   runSse,
   getGitHubConnectUrl,
+  getGoogleReauthUrl,
 } from '../lib/api'
 
 interface Message {
@@ -63,6 +65,62 @@ function formatSessionTitle(session: Session): string {
 
 function formatTime(id: string): string {
   return 'Recent'
+}
+
+function getAuthCardInfo(text: string): { type: 'google' | 'github'; label: string; mode?: 'write' } | null {
+  const lower = text.toLowerCase()
+
+  // GitHub matching (e.g. "I don't currently have access to your GitHub account")
+  if (
+    lower.includes('github account') ||
+    lower.includes('access to your github') ||
+    lower.includes('connect github') ||
+    lower.includes('connect your github') ||
+    lower.includes('github token') ||
+    lower.includes('github integration') ||
+    lower.includes('github permissions') ||
+    lower.includes('re-authorize github') ||
+    lower.includes('missing github') ||
+    lower.includes('not connected to github') ||
+    lower.includes('github_token')
+  ) {
+    return { type: 'github', label: 'Connect GitHub Account' }
+  }
+
+  // Google matching
+  if (
+    lower.includes('re-authorize google') ||
+    lower.includes('google write permissions') ||
+    lower.includes('missing google') ||
+    lower.includes('access to your google') ||
+    lower.includes('connect google') ||
+    lower.includes('gmail write') ||
+    lower.includes('calendar write') ||
+    lower.includes('gmail_send') ||
+    lower.includes('calendar_create') ||
+    lower.includes('google.com/auth')
+  ) {
+    return { type: 'google', label: 'Re-authorize Google Permissions', mode: 'write' }
+  }
+
+  return null
+}
+
+function cleanMarkdownText(text: string): string {
+  if (!text) return ''
+  return text
+    .replace(/\|\|/g, '|\n|')
+    .replace(/^[\s]*---+[\s]*$/gm, '')
+    .replace(/^[\s]*\*\*\*+[\s]*$/gm, '')
+    .replace(/^[\s]*___+[\s]*$/gm, '')
+    .replace(/\$\\rightarrow\$/g, '→')
+    .replace(/\\rightarrow/g, '→')
+    .replace(/\$\\leftarrow\$/g, '←')
+    .replace(/\\leftarrow/g, '←')
+    .replace(/\$\\Rightarrow\$/g, '⇒')
+    .replace(/\\Rightarrow/g, '⇒')
+    .replace(/\$\\Leftarrow\$/g, '⇐')
+    .replace(/\\Leftarrow/g, '⇐')
 }
 
 export default function ChatPage() {
@@ -239,7 +297,25 @@ export default function ChatPage() {
   const startReconnectPollingRef = useRef(startReconnectPolling)
   startReconnectPollingRef.current = startReconnectPolling
 
-  const [input, setInput] = useState('')
+  const [input, setInputState] = useState(() => {
+    try {
+      return sessionStorage.getItem('chat_input_draft') || ''
+    } catch {
+      return ''
+    }
+  })
+
+  const updateInput = useCallback((val: string) => {
+    setInputState(val)
+    try {
+      if (val) {
+        sessionStorage.setItem('chat_input_draft', val)
+      } else {
+        sessionStorage.removeItem('chat_input_draft')
+      }
+    } catch {}
+  }, [])
+
   const [streaming, setStreaming] = useState(false)
   const [loading, setLoading] = useState(true)
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -342,7 +418,7 @@ export default function ChatPage() {
       setSessions((prev) => [session, ...prev])
       setActiveSession(session)
       setMessages([])
-      inputRef.current?.focus()
+      setTimeout(() => inputRef.current?.focus(), 50)
     } catch (e) {
       console.error('Failed to create session', e)
     }
@@ -350,6 +426,8 @@ export default function ChatPage() {
 
   const handleSelectSession = async (session: Session) => {
     if (!profile) return
+    if (session.id === activeSession?.id) return
+
     setActiveSession(session)
     if (typeof window !== 'undefined' && window.innerWidth < 768) {
       setSidebarOpen(false)
@@ -358,7 +436,6 @@ export default function ChatPage() {
       const fullSession = await getSession(profile.user_id, session.id)
       if (fullSession) {
         setMessages(parseEventsToMessages(fullSession.events ?? []))
-        // Update the sessions list with the full session so the title updates
         setSessions((prev) => prev.map((s) => (s.id === fullSession.id ? fullSession : s)))
       }
     } catch (e) {
@@ -429,7 +506,7 @@ export default function ChatPage() {
       persistMessages(next, currentSessionId)
       return next
     })
-    setInput('')
+    updateInput('')
     setStreaming(true)
 
     // Optimistically update session title in sidebar with user's first message if new
@@ -515,6 +592,9 @@ export default function ChatPage() {
     }
   }
 
+  const googleConnected = !!profile?.connected_providers?.google?.connected
+  const googleUsername = profile?.connected_providers?.google?.username
+  const googleMissingWrite = (profile?.connected_providers?.google?.missing_scopes ?? []).length > 0
   const githubConnected = !!profile?.connected_providers?.github?.connected
   const githubUsername = profile?.connected_providers?.github?.username
 
@@ -646,19 +726,24 @@ export default function ChatPage() {
             </div>
           </div>
           <div className="chat-topbar-actions">
-            {githubConnected && (
-              <div className="topbar-github-pill" style={{
-                display: 'flex', alignItems: 'center', gap: 5,
-                fontSize: 12, color: 'var(--text-muted)',
-                background: 'var(--bg-surface)',
-                border: '1px solid var(--border)',
-                borderRadius: 'var(--radius-full)',
-                padding: '4px 8px',
-              }}>
-                <span>🐙</span>
-                <span className="github-pill-user">@{githubUsername}</span>
+            <div className="topbar-provider-pills">
+              <div
+                className={`provider-pill ${googleConnected ? 'connected' : ''}`}
+                title={googleConnected ? `Google: ${googleUsername || 'Connected'}` : 'Google: Not Connected'}
+              >
+                <span className={`provider-pill-dot ${googleConnected ? 'active' : ''}`} />
+                <span>Google</span>
+                {googleMissingWrite && <span style={{ fontSize: 10, color: '#f59e0b' }} title="Missing Write Permissions">⚠️</span>}
               </div>
-            )}
+
+              <div
+                className={`provider-pill ${githubConnected ? 'connected' : ''}`}
+                title={githubConnected ? `GitHub: @${githubUsername || 'Connected'}` : 'GitHub: Not Connected'}
+              >
+                <span className={`provider-pill-dot ${githubConnected ? 'active' : ''}`} />
+                <span>GitHub</span>
+              </div>
+            </div>
             <button className="btn btn-ghost btn-sm" onClick={() => navigate('/settings')} id="topbar-settings-btn">
               ⚙️ <span className="settings-btn-label">Settings</span>
             </button>
@@ -711,25 +796,25 @@ export default function ChatPage() {
               <div className="prompt-chips">
                 <button
                   className="prompt-chip"
-                  onClick={() => setInput('Summarise my last 3 emails')}
+                  onClick={() => updateInput('Summarise my last 3 emails')}
                 >
                   <span>📧</span> Summarise last 3 emails
                 </button>
                 <button
                   className="prompt-chip"
-                  onClick={() => setInput('Search my unread emails and show sender details')}
+                  onClick={() => updateInput('Search my unread emails and show sender details')}
                 >
                   <span>🔍</span> Search unread emails
                 </button>
                 <button
                   className="prompt-chip"
-                  onClick={() => setInput('Search my calendar events for this week')}
+                  onClick={() => updateInput('Search my calendar events for this week')}
                 >
                   <span>📅</span> Search events this week
                 </button>
                 <button
                   className="prompt-chip"
-                  onClick={() => setInput('List my recent GitHub repositories and issues')}
+                  onClick={() => updateInput('List my recent GitHub repositories and issues')}
                 >
                   <span>🐙</span> List my GitHub repos
                 </button>
@@ -769,7 +854,46 @@ export default function ChatPage() {
                       )}
 
                       {/* Response */}
-                      {msg.text && <ReactMarkdown>{msg.text}</ReactMarkdown>}
+                      {msg.text && (
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                          {cleanMarkdownText(msg.text)}
+                        </ReactMarkdown>
+                      )}
+
+                      {/* Interactive Auth Action Card */}
+                      {msg.text && (() => {
+                        const card = getAuthCardInfo(msg.text)
+                        if (!card) return null
+
+                        // Guard: do not show GitHub card if GitHub is already connected
+                        if (card.type === 'github' && githubConnected) return null
+
+                        // Guard: do not show Google card if Google is already connected with write scopes
+                        if (card.type === 'google' && googleConnected && !googleMissingWrite) return null
+
+                        return (
+                          <div className="auth-action-card">
+                            <div className="auth-action-card-info">
+                              <span style={{ fontSize: 20 }}>🔑</span>
+                              <div>
+                                <div className="auth-action-card-title">{card.label}</div>
+                                <div className="auth-action-card-desc">
+                                  {card.type === 'google'
+                                    ? 'Grant required permissions to execute this workspace action.'
+                                    : 'Connect your GitHub account to access repositories and issues.'}
+                                </div>
+                              </div>
+                            </div>
+                            <a
+                              href={card.type === 'google' ? getGoogleReauthUrl() : getGitHubConnectUrl()}
+                              className="btn btn-primary btn-sm"
+                              style={{ textDecoration: 'none', whiteSpace: 'nowrap' }}
+                            >
+                              {card.type === 'google' ? 'Re-authorize Google →' : 'Connect GitHub →'}
+                            </a>
+                          </div>
+                        )
+                      })()}
                     </>
                   ) : (
                     msg.text
@@ -789,7 +913,7 @@ export default function ChatPage() {
               className="message-input"
               placeholder="Ask about your emails, calendar, or GitHub..."
               value={input}
-              onChange={(e) => setInput(e.target.value)}
+              onChange={(e) => updateInput(e.target.value)}
               onKeyDown={handleKeyDown}
               rows={1}
               disabled={streaming}
