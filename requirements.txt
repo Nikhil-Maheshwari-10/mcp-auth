@@ -1,2 +1,17 @@
 requests
 python-dotenv
+fastmcp
+google-adk
+
+# Database
+sqlalchemy[asyncio]
+asyncpg
+alembic
+
+# Auth API
+fastapi
+uvicorn[standard]
+httpx
+
+# Logging
+loguru>=0.7.2

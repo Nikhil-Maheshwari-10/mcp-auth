@@ -13,6 +13,9 @@ env/
 # Environment variables
 .env
 
+# Token storage
+.tokens/
+
 # Distribution / packaging
 dist/
 build/
@@ -27,3 +30,14 @@ htmlcov/
 .idea/
 .vscode/
 *.swp
+
+# Testing
+tests/
+testing_agent/
+
+# ADK state and generated files
+.adk/
+tmp/
+
+# Logs
+logs/
