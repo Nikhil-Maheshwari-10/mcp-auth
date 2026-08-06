@@ -12,3 +12,6 @@ alembic
 fastapi
 uvicorn[standard]
 httpx
+
+# Logging
+loguru>=0.7.2

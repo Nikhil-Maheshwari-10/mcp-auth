@@ -7,6 +7,7 @@ import uuid
 from contextvars import ContextVar
 from typing import Any
 
+from core.logger import logger
 from db.token_repo import get_token
 
 # ContextVar for setting user_id per request/session in memory
@@ -46,31 +47,37 @@ async def require_token(
     """Load valid token for user_id and provider from PostgreSQL via token_repo.
 
     Automatically refreshes expired/near-expiry tokens via token_repo.get_token.
-    Raises RuntimeError if no token is found or user_id is missing.
+    Raises RuntimeError with a user-friendly message if no token found or user_id missing.
     """
+    from core.messages import TOOL_GOOGLE_TOKEN_MISSING, TOOL_GITHUB_TOKEN_MISSING
+
     uid: uuid.UUID | None = None
     if user_id:
         if isinstance(user_id, str):
             try:
                 uid = uuid.UUID(user_id.strip())
             except ValueError:
-                raise RuntimeError(f"Invalid user_id UUID format: '{user_id}'")
+                logger.error(f"require_token: invalid user_id UUID string '{user_id}'")
+                raise RuntimeError(f"Invalid user_id format: '{user_id}'")
         else:
             uid = user_id
     else:
         uid = get_user_id_from_context()
 
     if uid is None:
+        logger.error("require_token: no user_id in args or context — cannot load OAuth token")
         raise RuntimeError(
             "user_id is required to access OAuth credentials. Please provide user_id."
         )
 
     token = await get_token(uid, provider)
     if token is None or not token.get("access_token"):
-        name = "Google" if provider == "google" else "GitHub"
-        raise RuntimeError(
-            f"No {name} account connected for user {uid}. Please connect your {name} account first."
-        )
+        if provider == "google":
+            msg = TOOL_GOOGLE_TOKEN_MISSING
+        else:
+            msg = TOOL_GITHUB_TOKEN_MISSING
+        logger.warning(f"No valid {provider} OAuth token for user {uid} — {msg}")
+        raise RuntimeError(msg)
     return token
 
 
@@ -81,3 +88,4 @@ def build_github_headers(token: dict[str, Any]) -> dict[str, str]:
         "Accept": "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28",
     }
+

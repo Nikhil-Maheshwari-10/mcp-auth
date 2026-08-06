@@ -66,6 +66,9 @@ class OAuthToken(Base):
         TIMESTAMP(timezone=True), nullable=True
     )
     scope: Mapped[str | None] = mapped_column(Text, nullable=True)
+    provider_username: Mapped[str | None] = mapped_column(
+        String(255), nullable=True
+    )  # GitHub username, Google display name, etc. — shown in Settings UI
     updated_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True),
         server_default=func.now(),
@@ -80,7 +83,7 @@ class OAuthToken(Base):
 
 
 class Session(Base):
-    __tablename__ = "sessions"
+    __tablename__ = "auth_sessions"
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4

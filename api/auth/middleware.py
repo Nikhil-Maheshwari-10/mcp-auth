@@ -13,9 +13,10 @@ Usage in any route:
 """
 
 import uuid
-
-from fastapi import Cookie, Depends, HTTPException, status
-
+from fastapi import Cookie
+from core.logger import logger
+from core.exceptions import UnauthorizedException
+from core.messages import AUTH_NOT_AUTHENTICATED, AUTH_SESSION_EXPIRED
 from api.auth.session import get_user_from_session
 
 
@@ -24,16 +25,14 @@ async def get_current_user(
 ) -> uuid.UUID:
     """Return the user_id for the current request, or raise 401."""
     if not session_id:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Not authenticated — no session cookie.",
-        )
+        logger.warning("Authentication failed: missing session_id cookie")
+        raise UnauthorizedException(AUTH_NOT_AUTHENTICATED)
 
     user_id = await get_user_from_session(session_id)
     if user_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Session expired or invalid.",
-        )
+        logger.warning(f"Authentication failed: session '{session_id[:8]}...' expired or invalid")
+        raise UnauthorizedException(AUTH_SESSION_EXPIRED)
 
+    logger.debug(f"Authenticated session for user_id={user_id}")
     return user_id
+

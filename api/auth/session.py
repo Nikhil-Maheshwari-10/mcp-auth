@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
+from core.logger import logger
 from db.engine import AsyncSessionLocal
 from db.models import Session
 
@@ -27,6 +28,7 @@ async def create_session(user_id: uuid.UUID) -> str:
     async with AsyncSessionLocal() as db:
         async with db.begin():
             await db.execute(stmt)
+    logger.info(f"Created browser session {session_id} for user {user_id}")
     return str(session_id)
 
 
@@ -35,6 +37,7 @@ async def get_user_from_session(session_id: str) -> uuid.UUID | None:
     try:
         sid = uuid.UUID(session_id)
     except ValueError:
+        logger.warning(f"Invalid session_id UUID format: '{session_id}'")
         return None
 
     async with AsyncSessionLocal() as db:
@@ -44,7 +47,24 @@ async def get_user_from_session(session_id: str) -> uuid.UUID | None:
             )
             row: Session | None = result.scalar_one_or_none()
             if row is None:
+                logger.debug(f"Session {sid} not found in DB")
                 return None
 
             row.last_seen = datetime.now(tz=timezone.utc)
             return row.user_id
+
+
+async def delete_session(session_id: str) -> None:
+    """Delete a session from the DB by session_id."""
+    from sqlalchemy import delete
+    try:
+        sid = uuid.UUID(session_id)
+    except ValueError:
+        logger.warning(f"delete_session: invalid session_id UUID format '{session_id}'")
+        return
+
+    async with AsyncSessionLocal() as db:
+        async with db.begin():
+            await db.execute(delete(Session).where(Session.id == sid))
+    logger.info(f"Deleted browser session {sid} from DB")
+

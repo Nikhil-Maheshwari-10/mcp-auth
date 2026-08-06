@@ -41,16 +41,11 @@ services:
     ports:
       - "8001:8001"
     env_file: .env
-    depends_on:
-      postgres:
-        condition: service_healthy
-  mcp:
-    build:
-      context: .
-      dockerfile: mcp_server/Dockerfile
-    container_name: mcp
-    restart: unless-stopped
-    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://workspace:workspace@postgres:5432/workspace_db
+      POSTGRES_HOST: postgres
+      NGROK_DOMAIN: ${NGROK_DOMAIN:-trailside-plentiful-humming.ngrok-free.dev}
+      FRONTEND_URL: https://${NGROK_DOMAIN:-trailside-plentiful-humming.ngrok-free.dev}
     depends_on:
       postgres:
         condition: service_healthy
@@ -63,12 +58,41 @@ services:
     restart: unless-stopped
     ports:
       - "8000:8000"
+    command: ["adk", "web", "adk_agent", "--host", "0.0.0.0", "--port", "8000", "--allow_origins", "*", "--session_service_uri", "postgresql+asyncpg://workspace:workspace@postgres:5432/workspace_db"]
     env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://workspace:workspace@postgres:5432/workspace_db
+      NGROK_DOMAIN: ${NGROK_DOMAIN:-trailside-plentiful-humming.ngrok-free.dev}
+      FRONTEND_URL: https://${NGROK_DOMAIN:-trailside-plentiful-humming.ngrok-free.dev}
     depends_on:
       postgres:
         condition: service_healthy
-      mcp:
-        condition: service_started
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: frontend
+    restart: unless-stopped
+    ports:
+      - "5173:80"
+    depends_on:
+      - api
+      - adk
+
+  ngrok:
+    image: ngrok/ngrok:latest
+    container_name: ngrok
+    restart: unless-stopped
+    ports:
+      - "4040:4040"
+    environment:
+      NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN}
+    command:
+      - "http"
+      - "frontend:80"
+      - "--domain=${NGROK_DOMAIN}"
+    depends_on:
+      - frontend
 
 volumes:
   postgres_data:

@@ -38,3 +38,6 @@ testing_agent/
 # ADK state and generated files
 .adk/
 tmp/
+
+# Logs
+logs/

@@ -11,6 +11,7 @@ from datetime import datetime, timedelta, timezone
 
 import httpx
 from dotenv import load_dotenv
+from core.logger import logger
 
 load_dotenv()
 
@@ -31,6 +32,7 @@ async def refresh_google_token(refresh_token: str) -> tuple[str, datetime]:
     Raises:
         httpx.HTTPStatusError if Google rejects the refresh request.
     """
+    logger.info("Executing silent Google OAuth token refresh...")
     payload = {
         "client_id": _GOOGLE_CLIENT_ID,
         "client_secret": _GOOGLE_CLIENT_SECRET,
@@ -38,16 +40,21 @@ async def refresh_google_token(refresh_token: str) -> tuple[str, datetime]:
         "grant_type": "refresh_token",
     }
 
-    async with httpx.AsyncClient() as client:
-        resp = await client.post(_GOOGLE_TOKEN_ENDPOINT, data=payload, timeout=10.0)
-        resp.raise_for_status()
-        data = resp.json()
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(_GOOGLE_TOKEN_ENDPOINT, data=payload, timeout=10.0)
+            resp.raise_for_status()
+            data = resp.json()
 
-    new_access_token: str = data["access_token"]
-    expires_in: int = data.get("expires_in", 3600)
-    new_expires_at = datetime.now(tz=timezone.utc) + timedelta(seconds=expires_in)
+        new_access_token: str = data["access_token"]
+        expires_in: int = data.get("expires_in", 3600)
+        new_expires_at = datetime.now(tz=timezone.utc) + timedelta(seconds=expires_in)
 
-    return new_access_token, new_expires_at
+        logger.success(f"Google token refreshed successfully (expires in {expires_in}s at {new_expires_at.strftime('%H:%M:%S')})")
+        return new_access_token, new_expires_at
+    except Exception as exc:
+        logger.error(f"Google token refresh failed: {exc}")
+        raise
 
 
 async def refresh_github_token(refresh_token: str | None) -> tuple[str, datetime] | None:
@@ -59,6 +66,7 @@ async def refresh_github_token(refresh_token: str | None) -> tuple[str, datetime
     if not refresh_token:
         return None
 
+    logger.info("Executing silent GitHub OAuth token refresh...")
     payload = {
         "client_id": _GITHUB_CLIENT_ID,
         "client_secret": _GITHUB_CLIENT_SECRET,
@@ -66,25 +74,32 @@ async def refresh_github_token(refresh_token: str | None) -> tuple[str, datetime
         "grant_type": "refresh_token",
     }
 
-    async with httpx.AsyncClient() as client:
-        resp = await client.post(
-            _GITHUB_TOKEN_ENDPOINT,
-            data=payload,
-            headers={"Accept": "application/json"},
-            timeout=10.0,
-        )
-        resp.raise_for_status()
-        data = resp.json()
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                _GITHUB_TOKEN_ENDPOINT,
+                data=payload,
+                headers={"Accept": "application/json"},
+                timeout=10.0,
+            )
+            resp.raise_for_status()
+            data = resp.json()
 
-    if "access_token" not in data:
+        if "access_token" not in data:
+            logger.warning("GitHub refresh response missing access_token")
+            return None
+
+        new_access_token: str = data["access_token"]
+        expires_in = data.get("expires_in")
+        new_expires_at = (
+            datetime.now(tz=timezone.utc) + timedelta(seconds=expires_in)
+            if expires_in
+            else None
+        )
+
+        logger.success("GitHub token refreshed successfully")
+        return new_access_token, new_expires_at
+    except Exception as exc:
+        logger.error(f"GitHub token refresh failed: {exc}")
         return None
 
-    new_access_token: str = data["access_token"]
-    expires_in = data.get("expires_in")
-    new_expires_at = (
-        datetime.now(tz=timezone.utc) + timedelta(seconds=expires_in)
-        if expires_in
-        else None
-    )
-
-    return new_access_token, new_expires_at

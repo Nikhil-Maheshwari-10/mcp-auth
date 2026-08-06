@@ -33,6 +33,14 @@ import mcp_server.tools.github  # noqa: F401
 
 
 if __name__ == "__main__":
-    # Runs with stdio transport by default — compatible with Claude Desktop
-    # and any MCP client that spawns the server as a subprocess.
-    mcp.run()
+    import os
+    transport = os.environ.get("MCP_TRANSPORT", "stdio")
+    if transport == "streamable-http":
+        # Persistent HTTP server mode — used in Docker so ADK connects over
+        # HTTP instead of spawning a new subprocess per request.
+        host = os.environ.get("MCP_HOST", "0.0.0.0")
+        port = int(os.environ.get("MCP_PORT", "8002"))
+        mcp.run(transport="streamable-http", host=host, port=port)
+    else:
+        # Default stdio mode — for Claude Desktop and local development.
+        mcp.run()
