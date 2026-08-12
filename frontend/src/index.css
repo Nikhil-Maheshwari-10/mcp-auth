@@ -148,15 +148,17 @@ body {
 
 .login-features {
   list-style: none;
-  margin-top: 32px;
-  display: flex; flex-direction: column; gap: 10px;
+  margin-top: 24px;
+  display: flex; flex-direction: column; gap: 12px;
 }
 .login-features li {
-  display: flex; align-items: center; gap: 10px;
+  display: flex; align-items: center; gap: 11px;
   font-size: 13px; color: var(--text-secondary);
+  line-height: 1.45;
 }
-.login-features li span:first-child {
-  font-size: 16px; width: 22px; text-align: center;
+.login-features li .feat-icon {
+  width: 20px; height: 20px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
 }
 
 /* ─── Buttons ────────────────────────────────────────── */
@@ -180,13 +182,51 @@ body {
 .btn-primary:active { transform: translateY(0); }
 
 .btn-google {
-  background: white;
-  color: #1f1f1f;
-  border: 1px solid rgba(0,0,0,0.1);
-  box-shadow: var(--shadow-sm);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-primary);
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  box-shadow: 0 2px 16px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255,255,255,0.06);
   width: 100%;
+  font-size: 15px;
+  font-weight: 500;
+  padding: 13px 20px;
+  position: relative;
+  overflow: hidden;
+  letter-spacing: 0.01em;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
-.btn-google:hover { background: #f8f8f8; transform: translateY(-1px); box-shadow: var(--shadow-md); }
+
+.btn-google::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(135deg,
+    rgba(66, 133, 244, 0.08),
+    rgba(52, 168, 83, 0.05),
+    rgba(251, 188, 5, 0.05),
+    rgba(234, 67, 53, 0.08)
+  );
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+
+.btn-google:hover {
+  transform: translateY(-2px);
+  border-color: rgba(255, 255, 255, 0.22);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(66,133,244,0.2), inset 0 1px 0 rgba(255,255,255,0.1);
+  color: #fff;
+}
+
+.btn-google:hover::before {
+  opacity: 1;
+}
+
+.btn-google:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+}
 
 .btn-ghost {
   background: transparent;
@@ -201,6 +241,20 @@ body {
   border: 1px solid rgba(239,68,68,0.2);
 }
 .btn-danger:hover { background: rgba(239,68,68,0.2); }
+
+.btn-disconnect-hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  transition: all 0.2s ease;
+}
+.btn-disconnect-hover:hover {
+  background: rgba(239, 68, 68, 0.18) !important;
+  color: #f87171 !important;
+  border-color: rgba(239, 68, 68, 0.5) !important;
+  box-shadow: 0 0 12px rgba(239, 68, 68, 0.3) !important;
+  opacity: 1 !important;
+}
 
 .btn-sm { padding: 7px 14px; font-size: 13px; }
 .btn-icon { width: 36px; height: 36px; padding: 0; border-radius: var(--radius-sm); }
@@ -356,6 +410,7 @@ body {
 .sidebar-footer {
   padding: 12px 8px;
   border-top: 1px solid var(--border);
+  position: relative;
 }
 
 .sidebar-user {
@@ -366,6 +421,270 @@ body {
   transition: background var(--transition);
 }
 .sidebar-user:hover { background: var(--bg-glass); }
+
+/* Sleek Add Account Action Button in Sidebar */
+.sidebar-add-account-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 9px;
+  border-radius: var(--radius-full);
+  background: rgba(66, 133, 244, 0.12);
+  border: 1px solid rgba(66, 133, 244, 0.3);
+  color: #60a5fa;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  flex-shrink: 0;
+  margin-left: auto;
+}
+.sidebar-add-account-btn:hover {
+  background: rgba(66, 133, 244, 0.25);
+  border-color: rgba(66, 133, 244, 0.6);
+  transform: translateY(-1px);
+  box-shadow: 0 0 12px rgba(66, 133, 244, 0.35);
+  color: #ffffff;
+}
+
+/* Create Workspace Action Button with Accent Glow */
+.sidebar-create-ws-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 8px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #a5b4fc;
+  background: rgba(99, 102, 241, 0.08);
+  border: 1px dashed rgba(99, 102, 241, 0.35);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  box-sizing: border-box;
+}
+
+.sidebar-create-ws-btn:hover {
+  background: rgba(99, 102, 241, 0.18);
+  border-color: rgba(129, 140, 248, 0.7);
+  border-style: solid;
+  color: #ffffff;
+  transform: translateY(-1px);
+  box-shadow: 0 0 16px rgba(99, 102, 241, 0.45);
+}
+
+.sidebar-create-ws-btn:active {
+  transform: translateY(0);
+}
+
+/* ─── Profile Modal Overlay & Card ─────────────────────── */
+.profile-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  animation: fadeIn 0.2s ease;
+}
+
+.profile-modal-card {
+  background: rgba(20, 20, 30, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius-lg);
+  width: 100%;
+  max-width: 480px;
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+  animation: scaleUp 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.profile-modal-header {
+  padding: 20px 24px;
+  background: rgba(255, 255, 255, 0.02);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.profile-modal-body {
+  padding: 24px;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes scaleUp {
+  from { opacity: 0; transform: scale(0.95) translateY(10px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+/* ─── Sidebar Accounts Popover (Hover card) ───────────── */
+.accounts-popover {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 8px;
+  right: 8px;
+  background: rgba(18, 18, 26, 0.96);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius-md);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  padding: 12px;
+  z-index: 100;
+  opacity: 0;
+  transform: translateY(8px) scale(0.96);
+  pointer-events: none;
+  transition: opacity 0.22s cubic-bezier(0.16, 1, 0.3, 1), transform 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.sidebar-user-wrapper:hover:not(:has(.sidebar-add-account-btn:hover)) .accounts-popover,
+.accounts-popover:hover {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+}
+
+/* Force close popover when hovering over + Add button */
+.sidebar-user-wrapper:has(.sidebar-add-account-btn:hover) .accounts-popover {
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  transform: translateY(8px) scale(0.96) !important;
+}
+
+/* Invisible hover bridge connecting footer & popover so moving cursor onto popover keeps it open */
+.accounts-popover::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  height: 20px;
+}
+
+.popover-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 8px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.popover-badge {
+  background: var(--accent-dim);
+  color: var(--accent-light);
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: var(--radius-full);
+}
+
+.popover-accounts-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.popover-account-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  border-radius: var(--radius-sm);
+  transition: background var(--transition);
+}
+
+.popover-account-item:hover {
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.popover-account-icon {
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+/* Profile picture avatar in popover rows */
+.popover-account-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  overflow: hidden;
+  flex-shrink: 0;
+  border: 1.5px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  position: relative;
+}
+
+.popover-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+  display: block;
+}
+
+.popover-avatar-fallback {
+  width: 100%;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+}
+
+
+.popover-account-details {
+  flex: 1;
+  min-width: 0;
+}
+
+.popover-account-email {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.popover-account-sub {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-top: 1px;
+}
+
+.popover-footer {
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--accent-light);
+  font-weight: 500;
+}
 
 .sidebar-avatar {
   width: 32px; height: 32px;
@@ -509,6 +828,100 @@ body {
 .message-bubble.agent pre code { background: none; padding: 0; }
 .message-bubble.agent strong { color: var(--text-primary); font-weight: 600; }
 
+/* Links & Emails inside Chat Messages — High-contrast bright blue */
+a,
+.message-bubble a,
+.message-bubble.agent a {
+  color: #60a5fa !important;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  font-weight: 500;
+  transition: color 0.15s ease;
+}
+
+a:hover,
+.message-bubble a:hover,
+.message-bubble.agent a:hover {
+  color: #93c5fd !important;
+}
+
+/* Headers inside Markdown */
+.message-bubble.agent h1,
+.message-bubble.agent h2,
+.message-bubble.agent h3,
+.message-bubble.agent h4 {
+  color: var(--text-primary);
+  font-weight: 600;
+  margin: 14px 0 8px 0;
+  line-height: 1.35;
+}
+.message-bubble.agent h1:first-child,
+.message-bubble.agent h2:first-child,
+.message-bubble.agent h3:first-child {
+  margin-top: 0;
+}
+.message-bubble.agent h1 { font-size: 16px; margin: 16px 0 8px 0; }
+.message-bubble.agent h2 { font-size: 15px; color: var(--text-primary); margin: 14px 0 6px 0; }
+.message-bubble.agent h3 { font-size: 14.5px; color: #818cf8 !important; margin: 14px 0 6px 0; }
+.message-bubble.agent h3 a { color: #818cf8 !important; text-decoration: none !important; }
+
+/* Horizontal rules (---) - completely hidden */
+.message-bubble.agent hr,
+.message-bubble hr {
+  display: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  height: 0 !important;
+  border: none !important;
+}
+
+/* Glassmorphic Tables */
+.message-bubble.agent table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  margin: 12px 0;
+  font-size: 12.5px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.message-bubble.agent th {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-primary);
+  font-weight: 600;
+  text-align: left;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.message-bubble.agent td {
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  color: var(--text-secondary);
+}
+
+.message-bubble.agent tr:last-child td {
+  border-bottom: none;
+}
+
+.message-bubble.agent tr:hover td {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+/* Blockquotes */
+.message-bubble.agent blockquote {
+  border-left: 3px solid var(--accent);
+  padding: 6px 14px;
+  margin: 10px 0;
+  background: var(--accent-dim);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
 /* Typing indicator */
 .typing-dots { display: flex; align-items: center; gap: 4px; padding: 4px 0; }
 .typing-dots span {
@@ -561,12 +974,12 @@ body {
 
 .input-wrapper {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   gap: 10px;
   background: var(--bg-surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  padding: 8px 8px 8px 16px;
+  padding: 8px 12px 8px 16px;
   transition: border-color var(--transition);
 }
 .input-wrapper:focus-within { border-color: var(--border-focus); box-shadow: 0 0 0 3px var(--accent-dim); }
@@ -582,8 +995,9 @@ body {
   outline: none;
   min-height: 24px;
   max-height: 160px;
-  line-height: 1.5;
-  padding: 4px 0;
+  line-height: 1.4;
+  padding: 6px 0;
+  margin: 0;
 }
 .message-input::placeholder { color: var(--text-muted); }
 
@@ -1042,4 +1456,159 @@ body {
     font-size: 12px;
   }
 }
+
+/* ─── Auth Action Cards & Connection Status Badges ────────────── */
+.auth-action-card {
+  margin-top: 12px;
+  padding: 12px 14px;
+  background: rgba(99, 102, 241, 0.08);
+  border: 1px solid rgba(99, 102, 241, 0.25);
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.auth-action-card-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.auth-action-card-title {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--text-primary);
+  margin-bottom: 2px;
+}
+
+.auth-action-card-desc {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.topbar-provider-pills {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.provider-pill {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  padding: 3px 9px;
+  transition: all 0.15s ease;
+}
+
+.provider-pill.connected {
+  border-color: rgba(34, 197, 94, 0.3);
+  color: var(--text-primary);
+}
+
+.provider-pill-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #64748b;
+}
+
+.provider-pill-dot.active {
+  background: #22c55e;
+  box-shadow: 0 0 6px rgba(34, 197, 94, 0.6);
+}
+
+/* ─── Sign Out Danger Button with Hover Red Glow ────────────────── */
+.btn-signout-danger {
+  font-size: 12px;
+  font-weight: 500;
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.05);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  padding: 7px 14px;
+  border-radius: var(--radius-md);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  box-shadow: none;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.btn-signout-danger:hover {
+  color: #ffffff;
+  background: rgba(239, 68, 68, 0.85);
+  border-color: #ef4444;
+  box-shadow: 0 0 16px rgba(239, 68, 68, 0.55);
+  transform: translateY(-1px);
+}
+
+/* ─── Sign Out Modal Buttons (Hover Glow Effects) ─────────────────────── */
+.btn-signout-primary {
+  width: 100%;
+  min-height: 44px;
+  background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%);
+  color: #ffffff;
+  border: none;
+  border-radius: var(--radius-md);
+  padding: 12px 16px;
+  font-weight: 600;
+  font-size: clamp(13px, 3.2vw, 14px);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  white-space: normal;
+  word-break: break-word;
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.25);
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  box-sizing: border-box;
+}
+
+.btn-signout-primary:hover:not(:disabled) {
+  background: linear-gradient(135deg, #4338ca 0%, #4f46e5 100%);
+  box-shadow: 0 0 22px rgba(99, 102, 241, 0.7);
+  transform: translateY(-1.5px);
+}
+
+.btn-signout-disconnect {
+  width: 100%;
+  min-height: 42px;
+  background: rgba(239, 68, 68, 0.08);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: var(--radius-md);
+  padding: 10px 16px;
+  font-weight: 500;
+  font-size: clamp(11.5px, 3vw, 12.5px);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  white-space: normal;
+  word-break: break-word;
+  box-shadow: none;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  margin-top: 6px;
+  box-sizing: border-box;
+}
+
+.btn-signout-disconnect:hover:not(:disabled) {
+  color: #ffffff;
+  background: rgba(239, 68, 68, 0.85);
+  border-color: #ef4444;
+  box-shadow: 0 0 22px rgba(239, 68, 68, 0.6);
+  transform: translateY(-1.5px);
+}
+
 

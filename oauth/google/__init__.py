@@ -1,8 +1,7 @@
 """
-oauth.google — Google OAuth2 authentication sub-package.
+oauth/google — Core Google OAuth2 business logic.
 
-Modules:
-  config.py    — loads Google credentials from environment
-  auth.py      — builds the authorization URL and exchanges the code for a token
-  callback.py  — runs a local listener to receive the OAuth redirect
+Contains pure functions for building auth URLs, exchanging authorization codes,
+and detecting missing consent scopes. Has no dependency on FastAPI or HTTP request
+objects — import and call from api/auth/google.py (routes) or tests.
 """

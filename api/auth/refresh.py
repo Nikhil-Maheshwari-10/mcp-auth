@@ -24,11 +24,11 @@ _GITHUB_CLIENT_SECRET = os.environ.get("GITHUB_CLIENT_SECRET", "")
 _GITHUB_TOKEN_ENDPOINT = "https://github.com/login/oauth/access_token"
 
 
-async def refresh_google_token(refresh_token: str) -> tuple[str, datetime]:
+async def refresh_google_token(refresh_token: str) -> tuple[str, datetime, str | None]:
     """Exchange a Google refresh_token for a fresh access_token.
 
     Returns:
-        tuple of (new_access_token: str, new_expires_at: datetime)
+        tuple of (new_access_token: str, new_expires_at: datetime, new_refresh_token: str | None)
     Raises:
         httpx.HTTPStatusError if Google rejects the refresh request.
     """
@@ -49,9 +49,10 @@ async def refresh_google_token(refresh_token: str) -> tuple[str, datetime]:
         new_access_token: str = data["access_token"]
         expires_in: int = data.get("expires_in", 3600)
         new_expires_at = datetime.now(tz=timezone.utc) + timedelta(seconds=expires_in)
+        new_refresh_token: str | None = data.get("refresh_token")
 
         logger.success(f"Google token refreshed successfully (expires in {expires_in}s at {new_expires_at.strftime('%H:%M:%S')})")
-        return new_access_token, new_expires_at
+        return new_access_token, new_expires_at, new_refresh_token
     except Exception as exc:
         logger.error(f"Google token refresh failed: {exc}")
         raise

@@ -3,7 +3,7 @@ import httpx
 from core.logger import logger
 from core.messages import TOOL_CALENDAR_ERROR, INTERNAL_ERROR
 from mcp_server import mcp
-from mcp_server.tools.common import require_token
+from mcp_server.tools.common import require_token, check_and_mark_call, check_account_ambiguity
 
 
 def _calendar_err(context: str, exc: Exception) -> str:
@@ -37,10 +37,13 @@ def _has_calendar_scope(token: dict) -> bool:
 
 
 @mcp.tool
-async def google_list_calendar_events(max_results: int = 5, user_id: str = "") -> list[dict]:
+async def google_list_calendar_events(max_results: int = 5, account_email: str = "", workspace_id: str = "", user_id: str = "") -> list[dict]:
     """List the next upcoming Google Calendar events for the authenticated user."""
+    ambiguity = await check_account_ambiguity(account_email, provider="google")
+    if ambiguity:
+        return [{"clarification_needed": ambiguity}]
     try:
-        token = await require_token(user_id, "google")
+        token = await require_token(workspace_id or user_id, "google", account_email=account_email)
         if not _has_calendar_scope(token):
             logger.warning(f"[CALENDAR] Scope guard blocked google_list_calendar_events for user {user_id}")
             return [{"error": _CALENDAR_SCOPE_MISSING_MSG}]
@@ -93,11 +96,15 @@ async def calendar_create_event(
     description: str = "",
     location: str = "",
     attendees: list[str] = None,
+    account_email: str = "",
+    workspace_id: str = "",
     user_id: str = "",
 ) -> dict:
     """Create a new event in the user's primary Google Calendar."""
+    if check_and_mark_call("calendar_create_event", {"summary": summary, "start": start_time, "account_email": account_email}):
+        return {"status": "skipped", "reason": "duplicate call blocked"}
     try:
-        token = await require_token(user_id, "google")
+        token = await require_token(workspace_id or user_id, "google", account_email=account_email)
         if not _has_calendar_scope(token):
             logger.warning(f"[CALENDAR] Scope guard blocked calendar_create_event for user {user_id}")
             return {"error": _CALENDAR_SCOPE_MISSING_MSG}
@@ -144,11 +151,15 @@ async def calendar_update_event(
     end_time: str = None,
     description: str = None,
     location: str = None,
+    account_email: str = "",
+    workspace_id: str = "",
     user_id: str = "",
 ) -> dict:
     """Update an existing event in the user's primary Google Calendar."""
+    if check_and_mark_call("calendar_update_event", {"event_id": event_id, "account_email": account_email}):
+        return {"status": "skipped", "reason": "duplicate call blocked"}
     try:
-        token = await require_token(user_id, "google")
+        token = await require_token(workspace_id or user_id, "google", account_email=account_email)
         if not _has_calendar_scope(token):
             logger.warning(f"[CALENDAR] Scope guard blocked calendar_update_event for user {user_id}")
             return {"error": _CALENDAR_SCOPE_MISSING_MSG}
@@ -188,10 +199,12 @@ async def calendar_update_event(
 
 
 @mcp.tool
-async def calendar_delete_event(event_id: str, user_id: str = "") -> dict:
+async def calendar_delete_event(event_id: str, account_email: str = "", workspace_id: str = "", user_id: str = "") -> dict:
     """Delete an event from the user's primary Google Calendar."""
+    if check_and_mark_call("calendar_delete_event", {"event_id": event_id, "account_email": account_email}):
+        return {"status": "skipped", "reason": "duplicate call blocked"}
     try:
-        token = await require_token(user_id, "google")
+        token = await require_token(workspace_id or user_id, "google", account_email=account_email)
         if not _has_calendar_scope(token):
             logger.warning(f"[CALENDAR] Scope guard blocked calendar_delete_event for user {user_id}")
             return {"error": _CALENDAR_SCOPE_MISSING_MSG}
@@ -219,11 +232,16 @@ async def calendar_search_events(
     time_min: str = None,
     time_max: str = None,
     max_results: int = 10,
+    account_email: str = "",
+    workspace_id: str = "",
     user_id: str = "",
 ) -> list[dict]:
     """Search for calendar events by text query or within a specific time window."""
+    ambiguity = await check_account_ambiguity(account_email, provider="google")
+    if ambiguity:
+        return [{"clarification_needed": ambiguity}]
     try:
-        token = await require_token(user_id, "google")
+        token = await require_token(workspace_id or user_id, "google", account_email=account_email)
         if not _has_calendar_scope(token):
             logger.warning(f"[CALENDAR] Scope guard blocked calendar_search_events for user {user_id}")
             return [{"error": _CALENDAR_SCOPE_MISSING_MSG}]
@@ -277,10 +295,10 @@ async def calendar_search_events(
 
 
 @mcp.tool
-async def calendar_get_event(event_id: str, user_id: str = "") -> dict:
+async def calendar_get_event(event_id: str, account_email: str = "", workspace_id: str = "", user_id: str = "") -> dict:
     """Retrieve full details for a specific calendar event."""
     try:
-        token = await require_token(user_id, "google")
+        token = await require_token(workspace_id or user_id, "google", account_email=account_email)
         if not _has_calendar_scope(token):
             logger.warning(f"[CALENDAR] Scope guard blocked calendar_get_event for user {user_id}")
             return {"error": _CALENDAR_SCOPE_MISSING_MSG}

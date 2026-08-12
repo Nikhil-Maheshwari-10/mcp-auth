@@ -2,7 +2,7 @@ import httpx
 from core.logger import logger
 from core.messages import TOOL_GITHUB_ERROR, INTERNAL_ERROR
 from mcp_server import mcp
-from mcp_server.tools.common import require_token, build_github_headers
+from mcp_server.tools.common import require_token, build_github_headers, check_and_mark_call, check_account_ambiguity
 
 
 def _github_err(context: str, exc: Exception) -> str:
@@ -21,10 +21,13 @@ def _github_err(context: str, exc: Exception) -> str:
 
 
 @mcp.tool
-async def github_list_repos(max_results: int = 10, user_id: str = "") -> list[dict]:
+async def github_list_repos(max_results: int = 10, account_username: str = "", workspace_id: str = "", user_id: str = "") -> list[dict]:
     """List the authenticated user's GitHub repositories."""
+    ambiguity = await check_account_ambiguity(account_username, provider="github")
+    if ambiguity:
+        return [{"clarification_needed": ambiguity}]
     try:
-        token = await require_token(user_id, "github")
+        token = await require_token(workspace_id or user_id, "github", account_email=account_username)
         max_results = min(max_results, 30)
         logger.info(f"Listing GitHub repositories (max_results: {max_results})")
 
@@ -59,11 +62,16 @@ async def github_list_issues(
     repo_full_name: str,
     state: str = "open",
     max_results: int = 5,
+    account_username: str = "",
+    workspace_id: str = "",
     user_id: str = "",
 ) -> list[dict]:
     """List issues in a specific GitHub repository."""
+    ambiguity = await check_account_ambiguity(account_username, provider="github")
+    if ambiguity:
+        return [{"clarification_needed": ambiguity}]
     try:
-        token = await require_token(user_id, "github")
+        token = await require_token(workspace_id or user_id, "github", account_email=account_username)
         max_results = min(max_results, 30)
         logger.info(f"Listing issues for repo '{repo_full_name}' (state: '{state}', max_results: {max_results})")
 
@@ -98,11 +106,16 @@ async def github_list_pull_requests(
     repo_full_name: str,
     state: str = "open",
     max_results: int = 5,
+    account_username: str = "",
+    workspace_id: str = "",
     user_id: str = "",
 ) -> list[dict]:
     """List pull requests in a specific GitHub repository."""
+    ambiguity = await check_account_ambiguity(account_username, provider="github")
+    if ambiguity:
+        return [{"clarification_needed": ambiguity}]
     try:
-        token = await require_token(user_id, "github")
+        token = await require_token(workspace_id or user_id, "github", account_email=account_username)
         max_results = min(max_results, 30)
         logger.info(f"Listing pull requests for repo '{repo_full_name}' (state: '{state}', max_results: {max_results})")
 
@@ -133,10 +146,13 @@ async def github_list_pull_requests(
 
 
 @mcp.tool
-async def github_whoami(user_id: str = "") -> dict:
+async def github_whoami(account_username: str = "", workspace_id: str = "", user_id: str = "") -> dict:
     """Fetch the authenticated GitHub user's profile to verify the token."""
+    ambiguity = await check_account_ambiguity(account_username, provider="github")
+    if ambiguity:
+        return {"clarification_needed": ambiguity}
     try:
-        token = await require_token(user_id, "github")
+        token = await require_token(workspace_id or user_id, "github", account_email=account_username)
         logger.info("Fetching authenticated GitHub user profile")
 
         async with httpx.AsyncClient(timeout=10.0) as client:
@@ -167,11 +183,15 @@ async def github_create_issue(
     title: str,
     body: str = "",
     labels: list[str] = None,
+    account_username: str = "",
+    workspace_id: str = "",
     user_id: str = "",
 ) -> dict:
     """Create a new issue in a GitHub repository."""
+    if check_and_mark_call("github_create_issue", {"repo": repo_full_name, "title": title}):
+        return {"status": "skipped", "reason": "duplicate call blocked"}
     try:
-        token = await require_token(user_id, "github")
+        token = await require_token(workspace_id or user_id, "github", account_email=account_username)
         logger.info(f"Creating issue in '{repo_full_name}': '{title}'")
 
         payload = {"title": title, "body": body}
@@ -204,11 +224,15 @@ async def github_comment_on_issue(
     repo_full_name: str,
     issue_number: int,
     body: str,
+    account_username: str = "",
+    workspace_id: str = "",
     user_id: str = "",
 ) -> dict:
     """Post a comment on a GitHub issue or pull request."""
+    if check_and_mark_call("github_comment_on_issue", {"repo": repo_full_name, "issue": issue_number}):
+        return {"status": "skipped", "reason": "duplicate call blocked"}
     try:
-        token = await require_token(user_id, "github")
+        token = await require_token(workspace_id or user_id, "github", account_email=account_username)
         logger.info(f"Adding comment to #{issue_number} in '{repo_full_name}'")
 
         async with httpx.AsyncClient(timeout=15.0) as client:
@@ -234,11 +258,15 @@ async def github_comment_on_issue(
 async def github_close_issue(
     repo_full_name: str,
     issue_number: int,
+    account_username: str = "",
+    workspace_id: str = "",
     user_id: str = "",
 ) -> dict:
     """Close an open issue in a GitHub repository."""
+    if check_and_mark_call("github_close_issue", {"repo": repo_full_name, "issue": issue_number}):
+        return {"status": "skipped", "reason": "duplicate call blocked"}
     try:
-        token = await require_token(user_id, "github")
+        token = await require_token(workspace_id or user_id, "github", account_email=account_username)
         logger.info(f"Closing issue #{issue_number} in '{repo_full_name}'")
 
         async with httpx.AsyncClient(timeout=15.0) as client:
@@ -268,11 +296,15 @@ async def github_create_pr(
     head: str,
     base: str = "main",
     body: str = "",
+    account_username: str = "",
+    workspace_id: str = "",
     user_id: str = "",
 ) -> dict:
     """Create a pull request in a GitHub repository."""
+    if check_and_mark_call("github_create_pr", {"repo": repo_full_name, "title": title, "head": head}):
+        return {"status": "skipped", "reason": "duplicate call blocked"}
     try:
-        token = await require_token(user_id, "github")
+        token = await require_token(workspace_id or user_id, "github", account_email=account_username)
         logger.info(f"Creating PR '{title}' ({head} -> {base}) in '{repo_full_name}'")
 
         payload = {
@@ -307,11 +339,16 @@ async def github_create_pr(
 async def github_get_issue(
     repo_full_name: str,
     issue_number: int,
+    account_username: str = "",
+    workspace_id: str = "",
     user_id: str = "",
 ) -> dict:
     """Fetch full details and comments of a specific GitHub issue."""
+    ambiguity = await check_account_ambiguity(account_username, provider="github")
+    if ambiguity:
+        return {"clarification_needed": ambiguity}
     try:
-        token = await require_token(user_id, "github")
+        token = await require_token(workspace_id or user_id, "github", account_email=account_username)
         logger.info(f"Fetching issue #{issue_number} from '{repo_full_name}'")
 
         async with httpx.AsyncClient(timeout=15.0) as client:
@@ -359,11 +396,16 @@ async def github_get_issue(
 async def github_get_pr(
     repo_full_name: str,
     pr_number: int,
+    account_username: str = "",
+    workspace_id: str = "",
     user_id: str = "",
 ) -> dict:
     """Fetch full details and review summary of a specific GitHub Pull Request."""
+    ambiguity = await check_account_ambiguity(account_username, provider="github")
+    if ambiguity:
+        return {"clarification_needed": ambiguity}
     try:
-        token = await require_token(user_id, "github")
+        token = await require_token(workspace_id or user_id, "github", account_email=account_username)
         logger.info(f"Fetching PR #{pr_number} from '{repo_full_name}'")
 
         async with httpx.AsyncClient(timeout=15.0) as client:
@@ -402,12 +444,17 @@ async def github_get_file_contents(
     repo_full_name: str,
     path: str,
     ref: str = "main",
+    account_username: str = "",
+    workspace_id: str = "",
     user_id: str = "",
 ) -> dict:
     """Fetch the contents of a file from a GitHub repository."""
+    ambiguity = await check_account_ambiguity(account_username, provider="github")
+    if ambiguity:
+        return {"clarification_needed": ambiguity}
     import base64
     try:
-        token = await require_token(user_id, "github")
+        token = await require_token(workspace_id or user_id, "github", account_email=account_username)
         logger.info(f"Fetching file '{path}' (ref: '{ref}') from '{repo_full_name}'")
 
         async with httpx.AsyncClient(timeout=15.0) as client:

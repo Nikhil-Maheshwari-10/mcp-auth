@@ -8,18 +8,49 @@
 const API_BASE = '/api'
 const ADK_BASE = '/apps'
 
+export interface GoogleAccount {
+  email: string
+  provider_account_id: string
+  is_active: boolean
+  scopes: string
+  missing_scopes: string[]
+  connected: boolean
+  avatar_url?: string | null
+}
+
+export interface Workspace {
+  id: string
+  name: string
+  created_at: string
+  role?: string
+  account_count?: number
+}
+
 export interface UserProfile {
   user_id: string
+  workspace_id: string
+  workspace_name: string
   email: string | null
   connected_providers: {
     google?: {
       connected: boolean
       username: string | null
       scopes: string
-      missing_scopes: string[]  // e.g. ['calendar'] if calendar wasn't granted
+      missing_scopes: string[]
+      accounts?: GoogleAccount[]
     }
-    github?: { connected: boolean; username: string | null }
+    github?: {
+      connected: boolean
+      username: string | null
+      accounts?: Array<{
+        username: string
+        provider_account_id: string
+        is_active: boolean
+        avatar_url?: string | null
+      }>
+    }
   }
+  workspaces?: Workspace[]
 }
 
 export interface Session {
@@ -40,9 +71,10 @@ export interface ChatEvent {
 
 // ─── Auth ────────────────────────────────────────────
 
-export async function logout(): Promise<void> {
+export async function logout(resetWorkspace: boolean = false): Promise<void> {
   try {
-    await fetch(`${API_BASE}/auth/logout`, { method: 'POST', credentials: 'include' })
+    const url = `${API_BASE}/auth/logout${resetWorkspace ? '?reset_workspace=true' : ''}`
+    await fetch(url, { method: 'POST', credentials: 'include' })
   } catch { /* ignore network error on logout */ }
 }
 
@@ -57,18 +89,107 @@ export function getGoogleLoginUrl(): string {
   return `${API_BASE}/auth/google/login`
 }
 
-export function getGoogleReauthUrl(): string {
-  return `${API_BASE}/auth/google/reauth`
+export function getGoogleReauthUrl(accountEmail?: string): string {
+  const base = `${API_BASE}/auth/google/reauth`
+  return accountEmail ? `${base}?account_email=${encodeURIComponent(accountEmail)}` : base
+}
+
+export function getGoogleAddAccountUrl(): string {
+  return `${API_BASE}/auth/google/add-account`
+}
+
+export async function removeGoogleAccount(providerAccountId: string): Promise<boolean> {
+  try {
+    const res = await fetch(
+      `${API_BASE}/auth/google/remove-account?provider_account_id=${encodeURIComponent(providerAccountId)}`,
+      { method: 'DELETE', credentials: 'include' }
+    )
+    return res.ok
+  } catch {
+    return false
+  }
+}
+
+export async function setGoogleActiveAccount(providerAccountId: string): Promise<boolean> {
+  try {
+    const res = await fetch(
+      `${API_BASE}/auth/google/set-active?provider_account_id=${encodeURIComponent(providerAccountId)}`,
+      { method: 'POST', credentials: 'include' }
+    )
+    return res.ok
+  } catch {
+    return false
+  }
 }
 
 export function getGitHubConnectUrl(): string {
   return `${API_BASE}/auth/github/login`
 }
 
-export async function disconnectGitHub(): Promise<boolean> {
+export function getGitHubAddAccountUrl(): string {
+  return `${API_BASE}/auth/github/add-account`
+}
+
+export async function disconnectGitHub(providerAccountId?: string): Promise<boolean> {
   try {
-    const res = await fetch(`${API_BASE}/auth/github/disconnect`, {
+    const url = providerAccountId
+      ? `${API_BASE}/auth/github/remove-account?provider_account_id=${encodeURIComponent(providerAccountId)}`
+      : `${API_BASE}/auth/github/disconnect`
+    const res = await fetch(url, {
+      method: providerAccountId ? 'DELETE' : 'POST',
+      credentials: 'include',
+    })
+    return res.ok
+  } catch {
+    return false
+  }
+}
+
+// ─── Workspaces ─────────────────────────────────────
+
+export async function listWorkspaces(): Promise<Workspace[]> {
+  try {
+    const res = await fetch(`${API_BASE}/workspace/list`, { credentials: 'include' })
+    if (!res.ok) return []
+    return res.json()
+  } catch {
+    return []
+  }
+}
+
+export async function switchWorkspace(workspaceId: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${API_BASE}/workspace/switch`, {
       method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workspace_id: workspaceId }),
+    })
+    return res.ok
+  } catch {
+    return false
+  }
+}
+
+export async function createWorkspace(name: string): Promise<{ workspace_id: string; name: string } | null> {
+  try {
+    const res = await fetch(`${API_BASE}/workspace/create`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    })
+    if (!res.ok) return null
+    return res.json()
+  } catch {
+    return null
+  }
+}
+
+export async function deleteWorkspace(workspaceId: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${API_BASE}/workspace/${encodeURIComponent(workspaceId)}`, {
+      method: 'DELETE',
       credentials: 'include',
     })
     return res.ok
@@ -79,18 +200,18 @@ export async function disconnectGitHub(): Promise<boolean> {
 
 // ─── ADK Sessions ────────────────────────────────────
 
-export async function listSessions(userId: string): Promise<Session[]> {
+export async function listSessions(workspaceId: string): Promise<Session[]> {
   const res = await fetch(
-    `${ADK_BASE}/adk_agent/users/${userId}/sessions`,
+    `${ADK_BASE}/adk_agent/users/${workspaceId}/sessions`,
     { credentials: 'include' }
   )
   if (!res.ok) return []
   return res.json()
 }
 
-export async function createSession(userId: string): Promise<Session> {
+export async function createSession(workspaceId: string): Promise<Session> {
   const res = await fetch(
-    `${ADK_BASE}/adk_agent/users/${userId}/sessions`,
+    `${ADK_BASE}/adk_agent/users/${workspaceId}/sessions`,
     {
       method: 'POST',
       credentials: 'include',
@@ -102,19 +223,19 @@ export async function createSession(userId: string): Promise<Session> {
   return res.json()
 }
 
-export async function getSession(userId: string, sessionId: string): Promise<Session | null> {
+export async function getSession(workspaceId: string, sessionId: string): Promise<Session | null> {
   const res = await fetch(
-    `${ADK_BASE}/adk_agent/users/${userId}/sessions/${sessionId}`,
+    `${ADK_BASE}/adk_agent/users/${workspaceId}/sessions/${sessionId}`,
     { credentials: 'include' }
   )
   if (!res.ok) return null
   return res.json()
 }
 
-export async function deleteSession(userId: string, sessionId: string): Promise<boolean> {
+export async function deleteSession(workspaceId: string, sessionId: string): Promise<boolean> {
   try {
     const res = await fetch(
-      `${ADK_BASE}/adk_agent/users/${userId}/sessions/${sessionId}`,
+      `${ADK_BASE}/adk_agent/users/${workspaceId}/sessions/${sessionId}`,
       {
         method: 'DELETE',
         credentials: 'include',
@@ -128,20 +249,20 @@ export async function deleteSession(userId: string, sessionId: string): Promise<
 
 // ─── Streaming Chat ──────────────────────────────────
 
-// ─── Behind the Scenes Tool Formatter ─────────────────
-
 const TOOL_DESCRIPTIONS: Record<string, string> = {
-  google_list_emails: '📧 Reading Gmail inbox',
-  gmail_get_email: '📧 Reading email content',
+  google_list_emails: '📬 Reading Gmail inbox',
+  gmail_get_email: '📩 Reading email content',
   gmail_send: '✉️ Sending email',
   gmail_reply: '✉️ Replying to email thread',
   gmail_search_emails: '🔍 Searching Gmail',
   gmail_archive: '📥 Archiving email',
   gmail_mark_as_read: '✉️ Marking email as read',
-  calendar_list_events: '📅 Fetching Google Calendar events',
+  google_list_calendar_events: '📅 Fetching Google Calendar events',
   calendar_search_events: '🔍 Searching Google Calendar',
   calendar_create_event: '📅 Creating calendar event',
   calendar_delete_event: '🗑️ Deleting calendar event',
+  calendar_update_event: '📅 Updating calendar event',
+  calendar_get_event: '📅 Fetching calendar event details',
   github_list_repos: '🐙 Listing GitHub repositories',
   github_list_issues: '🐙 Fetching GitHub issues',
   github_list_pull_requests: '🐙 Fetching GitHub pull requests',
@@ -160,7 +281,7 @@ export function formatToolStep(toolName: string): string {
 }
 
 export function runSse(
-  userId: string,
+  workspaceId: string,
   sessionId: string,
   message: string,
   onToken: (token: string) => void,
@@ -173,7 +294,7 @@ export function runSse(
   const doFetch = (sid: string, isRetry = false) => {
     const body = JSON.stringify({
       app_name: 'adk_agent',
-      user_id: userId,
+      user_id: workspaceId,
       session_id: sid,
       new_message: { role: 'user', parts: [{ text: message }] },
       streaming: true,
@@ -190,7 +311,7 @@ export function runSse(
         if (!res.ok) {
           if ((res.status === 404 || res.status === 400 || res.status === 500) && !isRetry) {
             try {
-              const ns = await createSession(userId)
+              const ns = await createSession(workspaceId)
               doFetch(ns.id, true)
               return
             } catch { /* ignore retry error, fall through */ }
