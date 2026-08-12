@@ -70,13 +70,107 @@ load_dotenv()
 from google.adk.agents.readonly_context import ReadonlyContext
 
 
-def get_instruction(ctx: ReadonlyContext) -> str:
-    user_id = ctx.user_id if ctx else ""
+async def _get_connected_accounts(user_id_str: str, workspace_id_str: str | None = None) -> str:
+    """Fetch all connected accounts for the user/workspace asynchronously."""
+    import uuid
+    from db.token_repo import get_all_provider_tokens
+
+    try:
+        uid = uuid.UUID(user_id_str.strip())
+    except Exception:
+        return "No active session."
+
+    wid: uuid.UUID | None = None
+    if workspace_id_str:
+        try:
+            wid = uuid.UUID(workspace_id_str.strip())
+        except Exception:
+            pass
+
+    try:
+        g_tokens = await get_all_provider_tokens(uid, "google", workspace_id=wid)
+        gh_tokens = await get_all_provider_tokens(uid, "github", workspace_id=wid)
+    except Exception as e:
+        logger.error(f"Failed to fetch connected accounts for prompt: {e}")
+        return "Unable to load connected accounts."
+
+    lines = []
+    if g_tokens:
+        lines.append("Google (Gmail & Calendar):")
+        for idx, t in enumerate(g_tokens, 1):
+            email = t.get("provider_username") or "(unknown email)"
+            lines.append(f"  {idx}. {email}")
+    else:
+        lines.append("Google (Gmail & Calendar): None connected")
+
+    if gh_tokens:
+        lines.append("GitHub:")
+        for idx, t in enumerate(gh_tokens, 1):
+            uname = t.get("provider_username") or "(unknown username)"
+            lines.append(f"  {idx}. @{uname}")
+    else:
+        lines.append("GitHub: None connected")
+
+    return "\n".join(lines)
+
+
+async def _resolve_identity(target_id: str) -> tuple[str, str | None]:
+    """
+    Given an ADK session target_id (which may be a workspace_id or a user_id),
+    return (real_user_id_str, workspace_id_str_or_None).
+
+    In workspace mode, ADK uses workspace_id as ctx.user_id. We check WorkspaceUser
+    to resolve the actual login user_id so token DB lookups work correctly.
+    """
+    import uuid
+    try:
+        tid = uuid.UUID(target_id.strip())
+    except Exception:
+        return target_id, None
+
+    from db.workspace_repo import get_owner_user_id_for_workspace
+    owner_uid = await get_owner_user_id_for_workspace(tid)
+    if owner_uid is not None:
+        # target_id is a workspace_id; resolve the real user_id
+        return str(owner_uid), str(tid)
+
+    # target_id is a plain user_id (single-account mode)
+    return target_id, None
+
+
+async def get_instruction(ctx: ReadonlyContext) -> str:
+    target_id = ctx.user_id if ctx else ""
+    if target_id:
+        real_user_id, workspace_id = await _resolve_identity(target_id)
+        from mcp_server.tools.common import set_context_user_id, set_context_workspace_id
+        set_context_user_id(real_user_id)
+        if workspace_id:
+            set_context_workspace_id(workspace_id)
+        else:
+            set_context_workspace_id(real_user_id)  # single-account: both point to user_id
+        accounts_context = await _get_connected_accounts(real_user_id, workspace_id)
+        session_label = f"workspace_id='{workspace_id}'" if workspace_id else f"user_id='{real_user_id}'"
+    else:
+        accounts_context = "No session context."
+        session_label = "unknown"
+
+    account_count = accounts_context.count("@") if accounts_context else 0
+    multi_account_reminder = (
+        "\n[MULTI-ACCOUNT REMINDER]\n"
+        f"There are {account_count} Google account(s) connected in this workspace.\n"
+        "RULE: If the user's message does NOT specify which account (or 'all'/'both'), "
+        "you MUST ask which account to use before calling any tool. Do NOT call tools for all accounts speculatively."
+    ) if account_count > 1 else ""
+
     return (
         f"{SYSTEM_PROMPT}\n\n"
-        f"[SYSTEM]: The current authenticated user_id is '{user_id}'. "
-        "You MUST pass this user_id as an argument to any tools that require it."
+        f"[SYSTEM CONTEXT]\n"
+        f"Session identity: {session_label}\n"
+        f"{multi_account_reminder}\n\n"
+        f"[CONNECTED ACCOUNTS]\n"
+        f"{accounts_context}"
     )
+
 
 
 def _extract_request_summary(llm_request) -> tuple[str, str]:

@@ -29,7 +29,7 @@ load_dotenv()
 
 AUTH_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth"
 TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token"
-USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
+USERINFO_URL = "https://www.googleapis.com/oauth2/v3/userinfo"
 
 # ── OAuth Scopes ───────────────────────────────────────────────────────────────
 

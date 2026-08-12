@@ -63,15 +63,15 @@ def generate_state() -> str:
     return secrets.token_urlsafe(16)
 
 
-async def exchange_code(code: str, redirect_uri: str) -> tuple[str, str]:
-    """Exchange a GitHub authorization code for an access token and username.
+async def exchange_code(code: str, redirect_uri: str) -> tuple[str, str, str, str | None]:
+    """Exchange a GitHub authorization code for an access token, username, user ID, and avatar URL.
 
     Args:
         code:         The authorization code received from GitHub's callback.
         redirect_uri: Must exactly match the redirect_uri used in the auth URL.
 
     Returns:
-        (access_token, github_username)
+        (access_token, github_username, provider_account_id, avatar_url)
 
     Raises:
         ValueError: If GitHub returned an error in the token response.
@@ -99,7 +99,7 @@ async def exchange_code(code: str, redirect_uri: str) -> tuple[str, str]:
 
         access_token: str = token_data["access_token"]
 
-        # Fetch GitHub username
+        # Fetch GitHub user profile
         user_resp = await client.get(
             USER_URL,
             headers={"Authorization": f"Bearer {access_token}"},
@@ -107,6 +107,8 @@ async def exchange_code(code: str, redirect_uri: str) -> tuple[str, str]:
         user_resp.raise_for_status()
         user_info = user_resp.json()
         github_username: str = user_info.get("login", "")
+        provider_account_id: str = str(user_info.get("id") or github_username)
+        avatar_url: str | None = user_info.get("avatar_url")
 
-    logger.debug(f"[GITHUB AUTH] Token exchange successful for '@{github_username}'")
-    return access_token, github_username
+    logger.debug(f"[GITHUB AUTH] Token exchange successful for '@{github_username}' (ID: {provider_account_id})")
+    return access_token, github_username, provider_account_id, avatar_url

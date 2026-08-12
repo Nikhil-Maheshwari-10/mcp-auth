@@ -2,7 +2,7 @@ import httpx
 from core.logger import logger
 from core.messages import TOOL_GMAIL_ERROR, INTERNAL_ERROR
 from mcp_server import mcp
-from mcp_server.tools.common import require_token, check_and_mark_call
+from mcp_server.tools.common import require_token, check_and_mark_call, check_account_ambiguity
 
 
 def _gmail_err(context: str, exc: Exception) -> str:
@@ -53,18 +53,22 @@ def _has_gmail_write_scope(token: dict) -> bool:
 
 
 @mcp.tool
-async def google_list_emails(max_results: int = 5, user_id: str = "") -> list[dict]:
+async def google_list_emails(max_results: int = 5, account_email: str = "", workspace_id: str = "", user_id: str = "") -> list[dict]:
     """List the most recent Gmail messages for the authenticated user.
 
     Args:
         max_results: Number of emails to return (default 5, max 20).
+        account_email: The connected Gmail address to check (optional if single account).
         user_id: The UUID of the user whose emails to fetch (optional if set in context).
 
     Returns:
         A list of dicts, each with: id, subject, from, date, snippet.
     """
+    ambiguity = await check_account_ambiguity(account_email, provider="google")
+    if ambiguity:
+        return [{"clarification_needed": ambiguity}]
     try:
-        token = await require_token(user_id, "google")
+        token = await require_token(workspace_id or user_id, "google", account_email=account_email)
         if not _has_gmail_read_scope(token):
             logger.warning(f"[GMAIL] Scope guard blocked google_list_emails for user {user_id}")
             return [{"error": _GMAIL_READ_SCOPE_MISSING_MSG}]
@@ -107,17 +111,21 @@ async def google_list_emails(max_results: int = 5, user_id: str = "") -> list[di
 
 
 @mcp.tool
-async def google_whoami(user_id: str = "") -> dict:
+async def google_whoami(account_email: str = "", workspace_id: str = "", user_id: str = "") -> dict:
     """Fetch the authenticated Google user's profile to verify the token.
 
     Args:
+        account_email: The connected Gmail address to check (optional if single account).
         user_id: The UUID of the user (optional if set in context).
 
     Returns:
         User's profile info (name, email, picture).
     """
+    ambiguity = await check_account_ambiguity(account_email, provider="google")
+    if ambiguity:
+        return {"clarification_needed": ambiguity}
     try:
-        token = await require_token(user_id, "google")
+        token = await require_token(workspace_id or user_id, "google", account_email=account_email)
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.get(
                 "https://www.googleapis.com/oauth2/v3/userinfo",
@@ -131,15 +139,15 @@ async def google_whoami(user_id: str = "") -> dict:
 
 
 @mcp.tool
-async def gmail_send(to: str, subject: str, body: str, user_id: str = "") -> dict:
+async def gmail_send(to: str, subject: str, body: str, account_email: str = "", workspace_id: str = "", user_id: str = "") -> dict:
     """Send an email on behalf of the authenticated user."""
     import base64
     from email.message import EmailMessage
 
-    if check_and_mark_call("gmail_send", {"to": to, "subject": subject}):
+    if check_and_mark_call("gmail_send", {"to": to, "subject": subject, "account_email": account_email}):
         return {"status": "skipped", "reason": "duplicate call blocked"}
     try:
-        token = await require_token(user_id, "google")
+        token = await require_token(workspace_id or user_id, "google", account_email=account_email)
         if not _has_gmail_write_scope(token):
             logger.warning(f"[GMAIL] Scope guard blocked gmail_send for user {user_id}")
             return {"error": _GMAIL_WRITE_SCOPE_MISSING_MSG}
@@ -175,15 +183,15 @@ async def gmail_send(to: str, subject: str, body: str, user_id: str = "") -> dic
 
 
 @mcp.tool
-async def gmail_reply(thread_id: str, to: str, subject: str, body: str, user_id: str = "") -> dict:
+async def gmail_reply(thread_id: str, to: str, subject: str, body: str, account_email: str = "", workspace_id: str = "", user_id: str = "") -> dict:
     """Reply to an existing email thread."""
     import base64
     from email.message import EmailMessage
 
-    if check_and_mark_call("gmail_reply", {"thread_id": thread_id, "to": to}):
+    if check_and_mark_call("gmail_reply", {"thread_id": thread_id, "to": to, "account_email": account_email}):
         return {"status": "skipped", "reason": "duplicate call blocked"}
     try:
-        token = await require_token(user_id, "google")
+        token = await require_token(workspace_id or user_id, "google", account_email=account_email)
         if not _has_gmail_write_scope(token):
             logger.warning(f"[GMAIL] Scope guard blocked gmail_reply for user {user_id}")
             return {"error": _GMAIL_WRITE_SCOPE_MISSING_MSG}
@@ -218,12 +226,12 @@ async def gmail_reply(thread_id: str, to: str, subject: str, body: str, user_id:
 
 
 @mcp.tool
-async def gmail_archive(message_id: str, user_id: str = "") -> dict:
+async def gmail_archive(message_id: str, account_email: str = "", workspace_id: str = "", user_id: str = "") -> dict:
     """Archive a Gmail message by removing it from the INBOX."""
-    if check_and_mark_call("gmail_archive", {"message_id": message_id}):
+    if check_and_mark_call("gmail_archive", {"message_id": message_id, "account_email": account_email}):
         return {"status": "skipped", "reason": "duplicate call blocked"}
     try:
-        token = await require_token(user_id, "google")
+        token = await require_token(workspace_id or user_id, "google", account_email=account_email)
         if not _has_gmail_write_scope(token):
             logger.warning(f"[GMAIL] Scope guard blocked gmail_archive for user {user_id}")
             return {"error": _GMAIL_WRITE_SCOPE_MISSING_MSG}
@@ -296,10 +304,10 @@ def _extract_body_text(payload: dict) -> str:
 
 
 @mcp.tool
-async def gmail_get_email(message_id: str, user_id: str = "") -> dict:
+async def gmail_get_email(message_id: str, account_email: str = "", workspace_id: str = "", user_id: str = "") -> dict:
     """Read the full body content, headers, and details of a specific Gmail message."""
     try:
-        token = await require_token(user_id, "google")
+        token = await require_token(workspace_id or user_id, "google", account_email=account_email)
         if not _has_gmail_read_scope(token):
             logger.warning(f"[GMAIL] Scope guard blocked gmail_get_email for user {user_id}")
             return {"error": _GMAIL_READ_SCOPE_MISSING_MSG}
@@ -341,11 +349,16 @@ async def gmail_get_email(message_id: str, user_id: str = "") -> dict:
 async def gmail_search_emails(
     query: str,
     max_results: int = 5,
+    account_email: str = "",
+    workspace_id: str = "",
     user_id: str = "",
 ) -> list[dict]:
     """Search for emails matching a Gmail search query."""
+    ambiguity = await check_account_ambiguity(account_email, provider="google")
+    if ambiguity:
+        return [{"clarification_needed": ambiguity}]
     try:
-        token = await require_token(user_id, "google")
+        token = await require_token(workspace_id or user_id, "google", account_email=account_email)
         if not _has_gmail_read_scope(token):
             logger.warning(f"[GMAIL] Scope guard blocked gmail_search_emails for user {user_id}")
             return [{"error": _GMAIL_READ_SCOPE_MISSING_MSG}]
@@ -389,12 +402,12 @@ async def gmail_search_emails(
 
 
 @mcp.tool
-async def gmail_mark_as_read(message_id: str, user_id: str = "") -> dict:
+async def gmail_mark_as_read(message_id: str, account_email: str = "", workspace_id: str = "", user_id: str = "") -> dict:
     """Mark an unread Gmail message as read."""
-    if check_and_mark_call("gmail_mark_as_read", {"message_id": message_id}):
+    if check_and_mark_call("gmail_mark_as_read", {"message_id": message_id, "account_email": account_email}):
         return {"status": "skipped", "reason": "duplicate call blocked"}
     try:
-        token = await require_token(user_id, "google")
+        token = await require_token(workspace_id or user_id, "google", account_email=account_email)
         if not _has_gmail_write_scope(token):
             logger.warning(f"[GMAIL] Scope guard blocked gmail_mark_as_read for user {user_id}")
             return {"error": _GMAIL_WRITE_SCOPE_MISSING_MSG}

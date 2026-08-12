@@ -6,16 +6,19 @@ request parsing, session validation, redirects, and token persistence.
 
 All core OAuth logic (URL building, code exchange) lives in:
     oauth/github/auth.py
+
+Tokens are saved to the CURRENT workspace (from session.active_workspace_id).
 """
 
 import os
+import time
 import uuid
 
 from fastapi import APIRouter, Request
 from fastapi.responses import RedirectResponse
 
 from core.logger import logger
-from api.auth.session import get_user_from_session
+from api.auth.session import get_user_from_session, get_workspace_from_session
 from db.token_repo import save_token
 from oauth.github.auth import build_auth_url, exchange_code, generate_state
 
@@ -27,8 +30,9 @@ _DEFAULT_BASE_URL = os.environ.get("FRONTEND_URL") or (
     else "https://trailside-plentiful-humming.ngrok-free.dev"
 )
 
-# In-memory state store: {state: {"user_id": str}}
+# In-memory state store: {state: {"user_id": str, "workspace_id": str, "_ts": float}}
 _pending: dict[str, dict] = {}
+_PENDING_TTL = 600  # 10 minutes
 
 
 def _get_base_url(request: Request) -> str:
@@ -47,6 +51,14 @@ def _get_base_url(request: Request) -> str:
     return _DEFAULT_BASE_URL
 
 
+def _cleanup_stale_pending() -> None:
+    now = time.time()
+    stale = [k for k, v in list(_pending.items()) if now - v.get("_ts", 0) > _PENDING_TTL]
+    for k in stale:
+        del _pending[k]
+
+
+@router.get("/add-account")
 @router.get("/login")
 async def github_login(request: Request) -> RedirectResponse:
     """Start GitHub OAuth connection flow.
@@ -66,11 +78,17 @@ async def github_login(request: Request) -> RedirectResponse:
         logger.warning("GitHub connect attempt rejected: session expired")
         return RedirectResponse(f"{base_url}/login?error=session_expired")
 
+    workspace_id = await get_workspace_from_session(session_id)
+
     state = generate_state()
-    _pending[state] = {"user_id": str(user_id)}
+    _pending[state] = {
+        "user_id": str(user_id),
+        "workspace_id": str(workspace_id) if workspace_id else None,
+        "_ts": time.time(),
+    }
 
     redirect_uri = f"{base_url}/api/auth/github/callback"
-    logger.info(f"Initiating GitHub OAuth link flow for user {user_id} (redirect_uri: {redirect_uri})")
+    logger.info(f"Initiating GitHub OAuth link flow for user {user_id} (workspace: {workspace_id}) (redirect_uri: {redirect_uri})")
 
     return RedirectResponse(build_auth_url(redirect_uri, state))
 
@@ -84,6 +102,8 @@ async def github_callback(
     error_description: str | None = None,
 ) -> RedirectResponse:
     """Receive the GitHub OAuth callback."""
+    _cleanup_stale_pending()
+
     base_url = _get_base_url(request)
     session_id = request.cookies.get("session_id")
 
@@ -101,9 +121,10 @@ async def github_callback(
         return RedirectResponse(f"{base_url}/settings?error=invalid_state", status_code=303)
 
     user_id_str = pending.get("user_id")
+    workspace_id_str = pending.get("workspace_id")
     if not user_id_str:
         logger.warning("GitHub OAuth callback missing associated user_id")
-        return RedirectResponse(f"{base_url}/login?error=missing_user", status_code=303)
+        return RedirectResponse(f"{base_url}/login?error=missing_context", status_code=303)
 
     # Verify active session matches the user who initiated GitHub link
     current_user_id = await get_user_from_session(session_id) if session_id else None
@@ -118,27 +139,35 @@ async def github_callback(
     logger.info(f"Exchanging GitHub authorization code for tokens (redirect_uri: {redirect_uri})")
 
     try:
-        access_token, github_username = await exchange_code(code, redirect_uri)
+        access_token, github_username, provider_account_id, avatar_url = await exchange_code(code, redirect_uri)
     except Exception as exc:
         logger.error(f"GitHub OAuth code exchange failed: {exc}")
         return RedirectResponse(f"{base_url}/settings?error=github_exchange_failed", status_code=303)
 
-    user_id = uuid.UUID(user_id_str)
-    await save_token(user_id, "github", {
-        "access_token": access_token,
-        "provider_username": github_username,
-    })
+    target_ws = uuid.UUID(workspace_id_str) if workspace_id_str else None
+    await save_token(
+        user_id=current_user_id,
+        provider="github",
+        token_data={
+            "access_token": access_token,
+            "provider_username": github_username,
+            "provider_account_id": provider_account_id,
+            "avatar_url": avatar_url,
+        },
+        workspace_id=target_ws,
+    )
 
-    logger.success(f"GitHub connected successfully for user {user_id} (@{github_username})")
+    logger.success(f"GitHub connected successfully for user {current_user_id} (workspace: {target_ws}) (@{github_username})")
     return RedirectResponse(
         f"{base_url}/settings?github=connected&username={github_username}",
         status_code=303,
     )
 
 
+@router.delete("/remove-account")
 @router.post("/disconnect")
 async def github_disconnect(request: Request) -> dict:
-    """Unlink and delete GitHub OAuth token from DB for current session user."""
+    """Unlink and delete GitHub OAuth token from DB for the CURRENT session."""
     from db.token_repo import delete_token
     from core.exceptions import UnauthorizedException
     from core.messages import AUTH_NOT_AUTHENTICATED, AUTH_SESSION_EXPIRED
@@ -151,5 +180,37 @@ async def github_disconnect(request: Request) -> dict:
     if not user_id:
         raise UnauthorizedException(AUTH_SESSION_EXPIRED)
 
-    deleted = await delete_token(user_id, "github")
-    return {"status": "disconnected" if deleted else "not_found", "user_id": str(user_id)}
+    workspace_id = await get_workspace_from_session(session_id)
+    provider_account_id = request.query_params.get("provider_account_id", "").strip() or None
+
+    deleted = await delete_token(
+        user_id=user_id,
+        provider="github",
+        provider_account_id=provider_account_id,
+        workspace_id=workspace_id,
+    )
+    return {
+        "status": "disconnected" if deleted else "not_found",
+        "user_id": str(user_id),
+        "workspace_id": str(workspace_id) if workspace_id else None,
+    }
+
+
+@router.post("/set-active")
+async def set_active_github_account(request: Request):
+    """Set the active GitHub account for the current user/workspace."""
+    from db.token_repo import set_active_token
+
+    session_id = request.cookies.get("session_id")
+    if not session_id:
+        return {"error": "Unauthorized"}, 401
+
+    user_id = await get_user_from_session(session_id)
+    if not user_id:
+        return {"error": "Session expired"}, 401
+
+    workspace_id = await get_workspace_from_session(session_id)
+    provider_account_id = request.query_params.get("provider_account_id", "").strip()
+
+    success = await set_active_token(user_id, "github", provider_account_id, workspace_id)
+    return {"status": "success" if success else "failed"}
