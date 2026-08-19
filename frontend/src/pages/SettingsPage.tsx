@@ -156,7 +156,16 @@ const ALL_TOOLS: ToolItem[] = [
     scopeType: 'write',
   },
 
-  // ─── GitHub Tools (11) ───
+  // ─── GitHub Tools (12) ───
+  {
+    id: 'github_get_repo_tree',
+    icon: '🌳',
+    name: 'Get Repository Tree',
+    description: 'Fetches full recursive file and folder structure for repo summary and architecture review in a single call.',
+    provider: 'github',
+    category: 'github',
+    scopeType: 'read',
+  },
   {
     id: 'github_get_issue',
     icon: '🐞',
@@ -164,6 +173,7 @@ const ALL_TOOLS: ToolItem[] = [
     description: 'Reads the full issue body, labels, assignees, and discussion thread.',
     provider: 'github',
     category: 'github',
+    scopeType: 'read',
   },
   {
     id: 'github_get_pr',
@@ -172,6 +182,7 @@ const ALL_TOOLS: ToolItem[] = [
     description: 'Reads PR description, branch refs, merge status, and changed files.',
     provider: 'github',
     category: 'github',
+    scopeType: 'read',
   },
   {
     id: 'github_get_file_contents',
@@ -180,6 +191,7 @@ const ALL_TOOLS: ToolItem[] = [
     description: 'Fetches and decodes text files (code, README, configs) directly from any repo branch.',
     provider: 'github',
     category: 'github',
+    scopeType: 'read',
   },
   {
     id: 'github_list_repos',
@@ -188,6 +200,7 @@ const ALL_TOOLS: ToolItem[] = [
     description: 'Lists owned and accessible repositories with stars, visibility, and forks.',
     provider: 'github',
     category: 'github',
+    scopeType: 'read',
   },
   {
     id: 'github_list_issues',
@@ -196,6 +209,7 @@ const ALL_TOOLS: ToolItem[] = [
     description: 'Filters and lists repository issues by state, label, and assignee.',
     provider: 'github',
     category: 'github',
+    scopeType: 'read',
   },
   {
     id: 'github_create_issue',
@@ -204,6 +218,7 @@ const ALL_TOOLS: ToolItem[] = [
     description: 'Opens new issues with title, description markdown, and labels.',
     provider: 'github',
     category: 'github',
+    scopeType: 'write',
   },
   {
     id: 'github_comment_on_issue',
@@ -212,6 +227,7 @@ const ALL_TOOLS: ToolItem[] = [
     description: 'Adds discussion comments to issues and pull requests.',
     provider: 'github',
     category: 'github',
+    scopeType: 'write',
   },
   {
     id: 'github_close_issue',
@@ -220,6 +236,16 @@ const ALL_TOOLS: ToolItem[] = [
     description: 'Closes completed or resolved issues on repositories.',
     provider: 'github',
     category: 'github',
+    scopeType: 'write',
+  },
+  {
+    id: 'github_list_branches',
+    icon: '🌿',
+    name: 'List Branches',
+    description: 'Lists all available git branches in a repository.',
+    provider: 'github',
+    category: 'github',
+    scopeType: 'read',
   },
   {
     id: 'github_list_pull_requests',
@@ -228,6 +254,7 @@ const ALL_TOOLS: ToolItem[] = [
     description: 'Lists open and merged pull requests with branch details.',
     provider: 'github',
     category: 'github',
+    scopeType: 'read',
   },
   {
     id: 'github_create_pr',
@@ -236,6 +263,7 @@ const ALL_TOOLS: ToolItem[] = [
     description: 'Opens new pull requests comparing head and base branches.',
     provider: 'github',
     category: 'github',
+    scopeType: 'write',
   },
   {
     id: 'github_whoami',
@@ -244,6 +272,7 @@ const ALL_TOOLS: ToolItem[] = [
     description: 'Retrieves connected GitHub user profile and permissions.',
     provider: 'github',
     category: 'github',
+    scopeType: 'read',
   },
 ]
 
@@ -254,13 +283,13 @@ export default function SettingsPage() {
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<'all' | 'gmail' | 'calendar' | 'github'>('all')
-  const [activeSection, setActiveSection] = useState<'profile' | 'integrations' | 'tools'>('profile')
+  const [activeSection, setActiveSection] = useState<'accounts' | 'tools'>('accounts')
   const [searchQuery, setSearchQuery] = useState('')
   const [disconnectingGitHub, setDisconnectingGitHub] = useState(false)
   const [showSignoutModal, setShowSignoutModal] = useState(false)
   const [signingOut, setSigningOut] = useState(false)
 
-  const switchSection = (sectionName: 'profile' | 'integrations' | 'tools') => {
+  const switchSection = (sectionName: 'accounts' | 'tools') => {
     setActiveSection(sectionName)
   }
 
@@ -322,6 +351,18 @@ export default function SettingsPage() {
     setDisconnectingGitHub(false)
   }
 
+  const [removingGithubAccountId, setRemovingGithubAccountId] = useState<string | null>(null)
+
+  const handleRemoveGithubAccount = async (providerAccountId: string) => {
+    setRemovingGithubAccountId(providerAccountId)
+    const success = await disconnectGitHub(providerAccountId)
+    if (success) {
+      const updated = await getMe()
+      if (updated) setProfile(updated)
+    }
+    setRemovingGithubAccountId(null)
+  }
+
   const handleRemoveAccount = async (accountId: string) => {
     setRemovingAccountId(accountId)
     const success = await removeGoogleAccount(accountId)
@@ -338,10 +379,18 @@ export default function SettingsPage() {
   const googleName = profile?.connected_providers?.google?.username
   const googleAccounts: Array<{ email: string; provider_account_id: string; is_active: boolean; missing_scopes: string[]; avatar_url?: string | null }> =
     profile?.connected_providers?.google?.accounts ?? []
+  const githubAccounts = profile?.connected_providers?.github?.accounts ?? []
   const primaryAccount = googleAccounts.find(a => a.email === profile?.email) ?? googleAccounts.find(a => a.is_active) ?? googleAccounts[0]
   const primaryAvatarUrl = primaryAccount?.avatar_url ?? googleAccounts.find(a => !!a.avatar_url)?.avatar_url ?? null
   const justConnected = params.get('github') === 'connected'
   const justReauthed = params.get('reauth') === 'success'
+  const errorParam = params.get('error')
+
+  // Account limits from /me response
+  const maxGmail = profile?.account_limits?.max_gmail_accounts ?? 3
+  const maxGithub = profile?.account_limits?.max_github_accounts ?? 3
+  const atGmailLimit = googleAccounts.length >= maxGmail
+  const atGithubLimit = githubAccounts.length >= maxGithub
 
   // Scope gap detection — derived from /me response
   const googleMissingScopes: string[] = profile?.connected_providers?.google?.missing_scopes ?? []
@@ -361,6 +410,45 @@ export default function SettingsPage() {
       return 0
     })
   }, [googleAccounts, profile?.email, googleMissingScopes, primaryAvatarUrl])
+
+  const allAccountAvatars = useMemo(() => {
+    const list: Array<{ key: string; title: string; avatar_url?: string | null; fallback: string; bg: string; isGithub: boolean }> = []
+
+    sortedGoogleAccounts.forEach((acc) => {
+      list.push({
+        key: `google-${acc.provider_account_id}`,
+        title: acc.email,
+        avatar_url: acc.avatar_url,
+        fallback: acc.email[0]?.toUpperCase() ?? 'G',
+        bg: 'linear-gradient(135deg, #6366f1, #a855f7)',
+        isGithub: false,
+      })
+    })
+
+    if (githubAccounts.length > 0) {
+      githubAccounts.forEach((acc) => {
+        list.push({
+          key: `github-${acc.provider_account_id}`,
+          title: `@${acc.username}`,
+          avatar_url: acc.avatar_url,
+          fallback: '🐙',
+          bg: '#24292e',
+          isGithub: true,
+        })
+      })
+    } else if (githubConnected && githubUsername) {
+      list.push({
+        key: 'github-primary',
+        title: `@${githubUsername}`,
+        avatar_url: null,
+        fallback: '🐙',
+        bg: '#24292e',
+        isGithub: true,
+      })
+    }
+
+    return list
+  }, [sortedGoogleAccounts, githubAccounts, githubConnected, githubUsername])
 
   // Also read missing_scopes from URL (set on initial login if partial consent)
   const urlMissingScopes = params.get('missing_scopes')?.split(',').filter(Boolean) ?? []
@@ -424,24 +512,13 @@ export default function SettingsPage() {
           </div>
 
           <div
-            className={`session-item ${activeSection === 'profile' ? 'active' : ''}`}
-            onClick={() => switchSection('profile')}
+            className={`session-item ${activeSection === 'accounts' ? 'active' : ''}`}
+            onClick={() => switchSection('accounts')}
             style={{ cursor: 'pointer' }}
           >
             <div className="session-item-content">
-              <div className="session-item-title">👤 Profile &amp; Identity</div>
-              <div className="session-item-meta">Primary identity details</div>
-            </div>
-          </div>
-
-          <div
-            className={`session-item ${activeSection === 'integrations' ? 'active' : ''}`}
-            onClick={() => switchSection('integrations')}
-            style={{ cursor: 'pointer' }}
-          >
-            <div className="session-item-content">
-              <div className="session-item-title">⚡ Connected Integrations</div>
-              <div className="session-item-meta">Google Workspace &amp; GitHub</div>
+              <div className="session-item-title">👤 Accounts &amp; Integrations</div>
+              <div className="session-item-meta">Google &amp; GitHub accounts</div>
             </div>
           </div>
 
@@ -458,55 +535,116 @@ export default function SettingsPage() {
         </div>
 
         <div className="sidebar-footer">
-          <div className="sidebar-user" style={{ cursor: 'default' }}>
-            <div style={{ display: 'flex', alignItems: 'center' }}>
-              {sortedGoogleAccounts.length > 1 ? (
-                <div style={{ display: 'flex', alignItems: 'center' }}>
-                  {sortedGoogleAccounts.slice(0, 3).map((acc, idx) => (
-                    <div
-                      key={acc.provider_account_id}
-                      className="sidebar-avatar"
-                      style={{
-                        width: 28,
-                        height: 28,
-                        marginLeft: idx === 0 ? 0 : -8,
-                        zIndex: 3 - idx,
-                        border: '2px solid var(--bg-surface)',
-                        overflow: 'hidden',
-                        padding: 0,
-                        flexShrink: 0,
-                      }}
-                    >
-                      {acc.avatar_url ? (
-                        <img src={acc.avatar_url} alt={acc.email} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                      ) : (
-                        <div style={{ width: '100%', height: '100%', background: 'linear-gradient(135deg, #6366f1, #a855f7)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 11, fontWeight: 700 }}>
-                          {acc.email[0]?.toUpperCase() ?? 'G'}
-                        </div>
-                      )}
-                    </div>
-                  ))}
+          <div className="sidebar-user" style={{ cursor: 'default', display: 'flex', flexDirection: 'column', gap: 8, padding: '12px' }}>
+            {/* Google / Gmail Section */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%' }}>
+              <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+                {sortedGoogleAccounts.length > 1 ? (
+                  <div style={{ display: 'flex', alignItems: 'center' }}>
+                    {sortedGoogleAccounts.slice(0, 3).map((acc, idx) => (
+                      <div
+                        key={acc.provider_account_id}
+                        className="sidebar-avatar"
+                        style={{
+                          width: 26,
+                          height: 26,
+                          marginLeft: idx === 0 ? 0 : -8,
+                          zIndex: 3 - idx,
+                          border: '2px solid var(--bg-surface)',
+                          overflow: 'hidden',
+                          padding: 0,
+                          flexShrink: 0,
+                        }}
+                        title={acc.email}
+                      >
+                        {acc.avatar_url ? (
+                          <img src={acc.avatar_url} alt={acc.email} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        ) : (
+                          <div style={{ width: '100%', height: '100%', background: 'linear-gradient(135deg, #6366f1, #a855f7)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 10, fontWeight: 700 }}>
+                            {acc.email[0]?.toUpperCase() ?? 'G'}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="sidebar-avatar" style={{ width: 26, height: 26, padding: 0, overflow: 'hidden', background: primaryAvatarUrl ? 'none' : undefined }}>
+                    {primaryAvatarUrl ? (
+                      <img
+                        src={primaryAvatarUrl}
+                        alt={profile?.email ?? 'User'}
+                        style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }}
+                      />
+                    ) : (
+                      profile?.email?.[0]?.toUpperCase() ?? '?'
+                    )}
+                  </div>
+                )}
+              </div>
+              <div className="sidebar-user-info" style={{ minWidth: 0, flex: 1 }}>
+                <div className="sidebar-user-email" style={{ fontSize: 12, fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {profile?.email ?? 'Unknown'}
                 </div>
-              ) : (
-                <div className="sidebar-avatar" style={{ padding: 0, overflow: 'hidden', background: primaryAvatarUrl ? 'none' : undefined }}>
-                  {primaryAvatarUrl ? (
-                    <img
-                      src={primaryAvatarUrl}
-                      alt={profile?.email ?? 'User'}
-                      style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }}
-                    />
-                  ) : (
-                    profile?.email?.[0]?.toUpperCase() ?? '?'
-                  )}
+                <div className="sidebar-user-role" style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+                  {sortedGoogleAccounts.length > 1 ? `● ${sortedGoogleAccounts.length} Gmail Accounts` : 'Workspace owner'}
                 </div>
-              )}
-            </div>
-            <div className="sidebar-user-info" style={{ marginLeft: sortedGoogleAccounts.length > 1 ? 6 : 0 }}>
-              <div className="sidebar-user-email">{profile?.email ?? 'Unknown'}</div>
-              <div className="sidebar-user-role" style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                {googleAccounts.length > 1 ? `● ${googleAccounts.length} Connected Accounts` : 'Workspace owner'}
               </div>
             </div>
+
+            {/* GitHub Section — Below Gmail */}
+            {(githubConnected || githubAccounts.length > 0) && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', paddingTop: 8, borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+                  {githubAccounts.length > 1 ? (
+                    <div style={{ display: 'flex', alignItems: 'center' }}>
+                      {githubAccounts.slice(0, 3).map((acc, idx) => (
+                        <div
+                          key={acc.provider_account_id}
+                          className="sidebar-avatar"
+                          style={{
+                            width: 26,
+                            height: 26,
+                            marginLeft: idx === 0 ? 0 : -8,
+                            zIndex: 3 - idx,
+                            border: '2px solid var(--bg-surface)',
+                            overflow: 'hidden',
+                            padding: 0,
+                            flexShrink: 0,
+                            background: '#24292e',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                          title={`@${acc.username}`}
+                        >
+                          {acc.avatar_url ? (
+                            <img src={acc.avatar_url} alt={acc.username} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                          ) : (
+                            <span style={{ fontSize: 12 }}>🐙</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="sidebar-avatar" style={{ width: 26, height: 26, padding: 0, overflow: 'hidden', background: '#24292e', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      {githubAccounts[0]?.avatar_url ? (
+                        <img src={githubAccounts[0].avatar_url} alt={githubUsername || 'GitHub'} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} />
+                      ) : (
+                        <span style={{ fontSize: 12 }}>🐙</span>
+                      )}
+                    </div>
+                  )}
+                </div>
+                <div className="sidebar-user-info" style={{ minWidth: 0, flex: 1 }}>
+                  <div className="sidebar-user-email" style={{ fontSize: 12, fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    @{githubUsername || githubAccounts[0]?.username || 'GitHub'}
+                  </div>
+                  <div className="sidebar-user-role" style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+                    {githubAccounts.length > 1 ? `● ${githubAccounts.length} GitHub Accounts` : '● 1 GitHub Account'}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </aside>
@@ -522,16 +660,10 @@ export default function SettingsPage() {
         </div>
 
         <div className="settings-page">
-          {activeSection === 'profile' && (
+          {activeSection === 'accounts' && (
             <>
-              <h1 className="settings-heading">Profile &amp; Identity</h1>
-              <p className="settings-sub">Manage your primary Google identity, connected accounts, and workspace options.</p>
-            </>
-          )}
-          {activeSection === 'integrations' && (
-            <>
-              <h1 className="settings-heading">Connected Integrations</h1>
-              <p className="settings-sub">Manage your linked Google Workspace accounts and GitHub OAuth integrations.</p>
+              <h1 className="settings-heading">Accounts &amp; Integrations</h1>
+              <p className="settings-sub">Manage your primary Google identity, linked Workspace accounts, and GitHub integrations.</p>
             </>
           )}
           {activeSection === 'tools' && (
@@ -609,9 +741,39 @@ export default function SettingsPage() {
             </div>
           )}
 
-          {/* Profile & Identity Section View */}
-          {activeSection === 'profile' && (
-            <div className="settings-section" id="identity-section">
+          {/* Account limit error banners */}
+          {errorParam === 'gmail_account_limit_reached' && (
+            <div style={{
+              padding: '12px 16px',
+              background: 'rgba(239,68,68,0.08)',
+              border: '1px solid rgba(239,68,68,0.25)',
+              borderRadius: 'var(--radius-md)',
+              color: 'var(--danger)',
+              fontSize: 13,
+              marginBottom: 24,
+              display: 'flex', alignItems: 'center', gap: 10,
+            }}>
+              ⚠️ <span>Gmail account limit reached ({maxGmail} max per workspace). Remove an existing account to add a new one.</span>
+            </div>
+          )}
+          {errorParam === 'github_account_limit_reached' && (
+            <div style={{
+              padding: '12px 16px',
+              background: 'rgba(239,68,68,0.08)',
+              border: '1px solid rgba(239,68,68,0.25)',
+              borderRadius: 'var(--radius-md)',
+              color: 'var(--danger)',
+              fontSize: 13,
+              marginBottom: 24,
+              display: 'flex', alignItems: 'center', gap: 10,
+            }}>
+              ⚠️ <span>GitHub account limit reached ({maxGithub} max per workspace). Disconnect an existing account to add a new one.</span>
+            </div>
+          )}
+
+          {/* Accounts & Integrations Section View */}
+          {activeSection === 'accounts' && (
+            <div className="settings-section" id="accounts-section">
               {/* Workspace Management Card — only when active workspace is selected */}
               {profile?.workspace_id && (
                 <div className="settings-card" style={{ marginBottom: 24, padding: '20px' }}>
@@ -637,9 +799,9 @@ export default function SettingsPage() {
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                       <div style={{ display: 'flex', alignItems: 'center' }}>
-                        {sortedGoogleAccounts.slice(0, 4).map((acc: any, idx: number) => (
+                        {allAccountAvatars.slice(0, 4).map((acc, idx) => (
                           <div
-                            key={acc.provider_account_id}
+                            key={acc.key}
                             style={{
                               width: 32,
                               height: 32,
@@ -648,26 +810,26 @@ export default function SettingsPage() {
                               zIndex: 4 - idx,
                               border: '2px solid var(--bg-card)',
                               overflow: 'hidden',
-                              background: 'rgba(255, 255, 255, 0.08)',
+                              background: acc.bg,
                               display: 'flex',
                               alignItems: 'center',
                               justifyContent: 'center',
                               flexShrink: 0,
                             }}
-                            title={acc.email}
+                            title={acc.title}
                           >
                             {acc.avatar_url ? (
-                              <img src={acc.avatar_url} alt={acc.email} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                              <img src={acc.avatar_url} alt={acc.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                             ) : (
-                              <div style={{ width: '100%', height: '100%', background: 'linear-gradient(135deg, #6366f1, #a855f7)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 12, fontWeight: 700 }}>
-                                {acc.email[0]?.toUpperCase() ?? 'G'}
+                              <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: acc.isGithub ? 14 : 12, fontWeight: 700 }}>
+                                {acc.fallback}
                               </div>
                             )}
                           </div>
                         ))}
                       </div>
                       <div style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 500 }}>
-                        {sortedGoogleAccounts.length} account{sortedGoogleAccounts.length !== 1 ? 's' : ''}
+                        {allAccountAvatars.length} account{allAccountAvatars.length !== 1 ? 's' : ''}
                       </div>
                     </div>
                   </div>
@@ -721,7 +883,7 @@ export default function SettingsPage() {
                     </div>
                     <div>
                       <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)' }}>
-                        Google Workspace Accounts ({googleAccounts.length || 1})
+                        Google Workspace &amp; Gmail
                       </div>
                       <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
                         Connected Gmail &amp; Calendar accounts available to AI agent tools
@@ -731,16 +893,19 @@ export default function SettingsPage() {
                   <button
                     type="button"
                     className="btn btn-ghost btn-sm"
-                    style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}
+                    disabled={atGmailLimit}
+                    title={atGmailLimit ? `Gmail account limit reached (${maxGmail} max)` : 'Add another Gmail account'}
+                    style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 6, cursor: atGmailLimit ? 'not-allowed' : 'pointer', opacity: atGmailLimit ? 0.5 : 1 }}
                     onClick={() => {
-                      if (!profile?.workspace_id) {
+                      if (atGmailLimit) return
+                      if (!profile?.workspace_id && googleAccounts.length > 0) {
                         handleOpenCreateWsModal('add-account')
                       } else {
                         window.location.href = getGoogleAddAccountUrl()
                       }
                     }}
                   >
-                    ➕ Add Account
+                    {atGmailLimit ? `Limit reached (${googleAccounts.length}/${maxGmail})` : '➕ Add Account'}
                   </button>
                 </div>
 
@@ -771,15 +936,17 @@ export default function SettingsPage() {
                             )}
                           </div>
                           <div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                              <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-primary)' }}>
-                                {acc.email}
-                              </span>
+                            <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-primary)' }}>
+                              {acc.email}
                             </div>
-                            {acc.missing_scopes && acc.missing_scopes.length > 0 && (
+                            {acc.missing_scopes && acc.missing_scopes.length > 0 ? (
                               <div style={{ fontSize: 11, color: 'var(--warning)', marginTop: 2 }}>
                                 ⚠️ Missing permissions: {acc.missing_scopes.join(', ')}
                               </div>
+                            ) : isOwner ? (
+                              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>Owner</div>
+                            ) : (
+                              <div style={{ fontSize: 11, color: 'var(--success)', marginTop: 2 }}>Active</div>
                             )}
                           </div>
                         </div>
@@ -794,7 +961,7 @@ export default function SettingsPage() {
                               🔑 Re-auth
                             </a>
                           )}
-                          {!isOwner && (
+                          {!isOwner && (!profile?.workspace_id || !(acc as any).is_inherited) && (
                             <button
                               type="button"
                               className="btn btn-ghost btn-sm"
@@ -812,7 +979,99 @@ export default function SettingsPage() {
                 </div>
               </div>
 
-              {/* Card 3: Workspace Session & Sign Out */}
+              {/* Card 3: Connected GitHub Integrations */}
+              <div className="settings-card" style={{ marginBottom: 24 }}>
+                <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <div className="account-icon github">
+                      <svg width="22" height="22" viewBox="0 0 24 24" fill="var(--text-primary)">
+                        <path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0 1 12 6.844a9.59 9.59 0 0 1 2.504.337c1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.02 10.02 0 0 0 22 12.017C22 6.484 17.522 2 12 2z" />
+                      </svg>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)' }}>
+                        GitHub Integrations
+                      </div>
+                      <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                        {githubConnected
+                          ? `${githubAccounts.length || 1} connected account(s) · 12 Repos, Issues, PRs & Tree tools active`
+                          : 'Connect GitHub to access repositories, issues, PRs and code tools'}
+                      </div>
+                    </div>
+                  </div>
+
+                  <a
+                    href={atGithubLimit ? '#' : getGitHubConnectUrl()}
+                    onClick={(e) => { if (atGithubLimit) e.preventDefault() }}
+                    className="btn btn-ghost btn-sm"
+                    id="connect-github-settings-btn"
+                    style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 6, opacity: atGithubLimit ? 0.5 : 1, cursor: atGithubLimit ? 'not-allowed' : 'pointer' }}
+                  >
+                    {atGithubLimit ? `Limit reached (${githubAccounts.length}/${maxGithub})` : githubConnected ? '➕ Add GitHub Account' : 'Connect GitHub'}
+                  </a>
+                </div>
+
+                {/* Per-account GitHub list */}
+                {githubAccounts.length > 0 ? (
+                  <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {githubAccounts.map((acc) => (
+                      <div
+                        key={acc.provider_account_id}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          padding: '12px 16px',
+                          background: 'var(--bg-card)',
+                          border: '1px solid var(--border)',
+                          borderRadius: 'var(--radius-md)',
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1 }}>
+                          {acc.avatar_url ? (
+                            <img src={acc.avatar_url} alt={acc.username} style={{ width: 34, height: 34, borderRadius: '50%', border: '1.5px solid rgba(255,255,255,0.15)' }} />
+                          ) : (
+                            <div style={{ width: 34, height: 34, borderRadius: '50%', background: '#24292e', border: '1.5px solid rgba(255,255,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16 }}>🐙</div>
+                          )}
+                          <div>
+                            <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-primary)' }}>@{acc.username}</div>
+                            {acc.is_active && <div style={{ fontSize: 11, color: 'var(--success)', marginTop: 2 }}>Active</div>}
+                          </div>
+                        </div>
+                        {(!profile?.workspace_id || !(acc as any).is_inherited) && (
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-sm"
+                            disabled={removingGithubAccountId === acc.provider_account_id}
+                            onClick={() => handleRemoveGithubAccount(acc.provider_account_id)}
+                            style={{ fontSize: 11, color: 'var(--danger)', padding: '4px 10px' }}
+                          >
+                            {removingGithubAccountId === acc.provider_account_id ? 'Removing...' : 'Remove'}
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : githubConnected && (
+                  <div style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-primary)' }}>@{githubUsername}</div>
+                    </div>
+                    {!profile?.workspace_id && (
+                      <button
+                        className="btn btn-ghost btn-sm"
+                        onClick={handleDisconnectGitHub}
+                        disabled={disconnectingGitHub}
+                        style={{ fontSize: 12, color: 'var(--danger)' }}
+                      >
+                        {disconnectingGitHub ? 'Disconnecting...' : 'Disconnect'}
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Card 4: Workspace Session & Sign Out */}
               <div className="settings-card" style={{ padding: '18px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <div>
                   <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>
@@ -835,162 +1094,6 @@ export default function SettingsPage() {
                   </svg>
                   <span>Sign Out</span>
                 </button>
-              </div>
-            </div>
-          )}
-
-          {/* Connected Accounts & Integrations Section View */}
-          {activeSection === 'integrations' && (
-            <div className="settings-section" id="integrations-section">
-              <div className="settings-card">
-
-                {/* Google Workspace & Accounts */}
-                <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <div className="account-icon google">
-                        <svg width="22" height="22" viewBox="0 0 18 18">
-                          <path fill="#4285F4" d="M16.51 8H8.98v3h4.3c-.18 1-.74 1.48-1.6 2.04v2.01h2.6a7.8 7.8 0 0 0 2.38-5.88c0-.57-.05-.66-.15-1.18z" />
-                          <path fill="#34A853" d="M8.98 17c2.16 0 3.97-.72 5.3-1.94l-2.6-2.01c-.72.48-1.63.77-2.7.77-2.07 0-3.82-1.4-4.45-3.28H1.87v2.07A8 8 0 0 0 8.98 17z" />
-                          <path fill="#FBBC05" d="M4.53 10.54A4.87 4.87 0 0 1 4.27 9c0-.53.09-1.05.26-1.54V5.39H1.87A8 8 0 0 0 .98 9c0 1.29.31 2.51.89 3.61l2.66-2.07z" />
-                          <path fill="#EA4335" d="M8.98 3.58c1.16 0 2.21.4 3.03 1.18l2.27-2.27A8 8 0 0 0 .98 9l2.85 2.07C4.3 5.07 6.35 3.58 8.98 3.58z" />
-                        </svg>
-                      </div>
-                      <div>
-                        <div className="account-name" style={{ fontSize: 15, fontWeight: 600 }}>Google Workspace & Gmail</div>
-                        <div className="account-detail" style={{ fontSize: 13, color: 'var(--text-muted)' }}>
-                          {(profile?.connected_providers?.google?.accounts?.length ?? 1)} connected account(s) · 14 Gmail & Calendar tools active
-                        </div>
-                      </div>
-                    </div>
-                    <a
-                      href={getGoogleAddAccountUrl()}
-                      className="btn btn-ghost btn-sm"
-                      id="add-google-account-btn"
-                      style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}
-                    >
-                      ➕ Add Gmail Account
-                    </a>
-                  </div>
-
-                  {/* List of connected accounts */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
-                    {sortedGoogleAccounts.map((acc) => {
-                      const isOwner = acc.email === profile?.email
-                      return (
-                        <div
-                          key={acc.provider_account_id}
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            padding: '10px 14px',
-                            background: 'var(--bg-card)',
-                            border: '1px solid var(--border)',
-                            borderRadius: 'var(--radius-md)',
-                          }}
-                        >
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                            {/* Per-account profile picture */}
-                            <div style={{ width: 28, height: 28, borderRadius: '50%', overflow: 'hidden', flexShrink: 0, border: '1.5px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                              {(acc as any).avatar_url ? (
-                                <img src={(acc as any).avatar_url} alt={acc.email} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} />
-                              ) : (
-                                <svg width="14" height="14" viewBox="0 0 18 18">
-                                  <path fill="#4285F4" d="M16.51 8H8.98v3h4.3c-.18 1-.74 1.48-1.6 2.04v2.01h2.6a7.8 7.8 0 0 0 2.38-5.88c0-.57-.05-.66-.15-1.18z" />
-                                  <path fill="#34A853" d="M8.98 17c2.16 0 3.97-.72 5.3-1.94l-2.6-2.01c-.72.48-1.63.77-2.7.77-2.07 0-3.82-1.4-4.45-3.28H1.87v2.07A8 8 0 0 0 8.98 17z" />
-                                  <path fill="#FBBC05" d="M4.53 10.54A4.87 4.87 0 0 1 4.27 9c0-.53.09-1.05.26-1.54V5.39H1.87A8 8 0 0 0 .98 9c0 1.29.31 2.51.89 3.61l2.66-2.07z" />
-                                  <path fill="#EA4335" d="M8.98 3.58c1.16 0 2.21.4 3.03 1.18l2.27-2.27A8 8 0 0 0 .98 9l2.85 2.07C4.3 5.07 6.35 3.58 8.98 3.58z" />
-                                </svg>
-                              )}
-                            </div>
-                            <div>
-                              <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)' }}>
-                                {acc.email}
-                              </div>
-                              {acc.missing_scopes && acc.missing_scopes.length > 0 && (
-                                <div style={{ fontSize: 11, color: 'var(--warning)', marginTop: 2 }}>
-                                  ⚠️ Missing: {acc.missing_scopes.join(', ')}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            {acc.missing_scopes && acc.missing_scopes.length > 0 && (
-                              <a
-                                href={getGoogleReauthUrl(acc.email)}
-                                className="btn btn-ghost btn-sm"
-                                style={{ fontSize: 11, padding: '2px 8px' }}
-                              >
-                                🔑 Re-auth
-                              </a>
-                            )}
-                            {!isOwner && (
-                              <button
-                                type="button"
-                                className="btn btn-ghost btn-sm"
-                                disabled={removingAccountId === acc.provider_account_id}
-                                onClick={() => handleRemoveAccount(acc.provider_account_id)}
-                                style={{ fontSize: 11, color: 'var(--danger)', padding: '2px 8px' }}
-                              >
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
-
-                {/* GitHub row */}
-                <div className="account-row">
-                  <div className="account-icon github">
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="var(--text-primary)">
-                      <path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0 1 12 6.844a9.59 9.59 0 0 1 2.504.337c1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.02 10.02 0 0 0 22 12.017C22 6.484 17.522 2 12 2z" />
-                    </svg>
-                  </div>
-                  <div className="account-info">
-                    <div className="account-name">GitHub</div>
-                    {githubConnected ? (
-                      <>
-                        <div className="account-detail">@{githubUsername} · 11 Repos, Issues, PRs & File tools active</div>
-                        <div className="account-linked-to">Linked to {profile?.email}</div>
-                      </>
-                    ) : (
-                      <div className="account-detail" style={{ color: 'var(--text-muted)' }}>
-                        Not connected · Connect to unlock 11 GitHub developer tools
-                      </div>
-                    )}
-                  </div>
-                  <div className="account-status">
-                    {githubConnected ? (
-                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
-                        <span className="badge badge-connected">✓ Connected</span>
-                        <button
-                          className="btn btn-ghost btn-sm"
-                          id="disconnect-github-btn"
-                          onClick={handleDisconnectGitHub}
-                          disabled={disconnectingGitHub}
-                          style={{ fontSize: 12, color: 'var(--text-muted)' }}
-                        >
-                          {disconnectingGitHub ? 'Disconnecting...' : 'Disconnect'}
-                        </button>
-                      </div>
-                    ) : (
-                      <a
-                        href={getGitHubConnectUrl()}
-                        className="btn btn-ghost btn-sm"
-                        id="connect-github-settings-btn"
-                      >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                          <path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0 1 12 6.844a9.59 9.59 0 0 1 2.504.337c1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.02 10.02 0 0 0 22 12.017C22 6.484 17.522 2 12 2z" />
-                        </svg>
-                        Connect GitHub
-                      </a>
-                    )}
-                  </div>
-                </div>
               </div>
             </div>
           )}
@@ -1028,7 +1131,7 @@ export default function SettingsPage() {
                   className={`filter-pill ${activeTab === 'github' ? 'active' : ''}`}
                   onClick={() => setActiveTab('github')}
                 >
-                  🐙 GitHub (11)
+                  🐙 GitHub (12)
                 </button>
               </div>
 

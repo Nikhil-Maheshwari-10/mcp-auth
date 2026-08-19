@@ -29,7 +29,7 @@ USER_URL = "https://api.github.com/user"
 
 # ── OAuth Scopes ───────────────────────────────────────────────────────────────
 
-SCOPES = ["read:user", "user:email", "repo", "notifications"]
+SCOPES = ["read:user", "user:email", "repo", "read:org", "notifications"]
 
 # ── Credentials (read once at import time) ─────────────────────────────────────
 

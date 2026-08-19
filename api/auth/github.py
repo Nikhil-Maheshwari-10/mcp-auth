@@ -80,6 +80,21 @@ async def github_login(request: Request) -> RedirectResponse:
 
     workspace_id = await get_workspace_from_session(session_id)
 
+    # ── Enforce MAX_LINKED_GITHUB_ACCOUNTS limit ──────────────────────────
+    max_github = int(os.environ.get("MAX_LINKED_GITHUB_ACCOUNTS", "3"))
+    from db.token_repo import count_tokens
+    current_count = await count_tokens(user_id, "github", workspace_id)
+    if current_count >= max_github:
+        logger.warning(
+            f"GitHub account limit reached for user {user_id} "
+            f"(workspace: {workspace_id}): {current_count}/{max_github}"
+        )
+        return RedirectResponse(
+            f"{base_url}/settings?error=github_account_limit_reached&limit={max_github}",
+            status_code=303,
+        )
+    # ─────────────────────────────────────────────────────────────────────
+
     state = generate_state()
     _pending[state] = {
         "user_id": str(user_id),
@@ -145,8 +160,59 @@ async def github_callback(
         return RedirectResponse(f"{base_url}/settings?error=github_exchange_failed", status_code=303)
 
     target_ws = uuid.UUID(workspace_id_str) if workspace_id_str else None
+
+    # Resolve the effective user_id — prefer the validated session user,
+    # fall back to the one stored in pending state (for cookie-less environments).
+    effective_user_id = current_user_id or uuid.UUID(user_id_str)
+
+    # If no workspace is set (single mode), check if a DIFFERENT GitHub token already exists.
+    # Only auto-create a workspace when adding a genuinely new/different GitHub account.
+    # Re-authing the same account (same provider_account_id) must NOT create a workspace.
+    if not target_ws:
+        from db.token_repo import get_token
+        existing_github = await get_token(effective_user_id, "github", workspace_id=None)
+        existing_account_id = existing_github.get("provider_account_id") if existing_github else None
+        is_different_account = existing_github and existing_account_id != provider_account_id
+
+        if is_different_account:
+            logger.info(
+                f"Single-mode user {effective_user_id} adding 2nd GitHub account "
+                f"({existing_account_id} → {provider_account_id}) — auto-creating workspace"
+            )
+            from db.workspace_repo import create_workspace, add_user_to_workspace
+            from db.models import User
+            from sqlalchemy import select
+            from db.connection import AsyncSessionLocal
+            from api.auth.session import switch_workspace_in_session
+
+            async with AsyncSessionLocal() as db:
+                u_res = await db.execute(select(User).where(User.id == effective_user_id))
+                u = u_res.scalar_one_or_none()
+
+            ws_name = f"{(u.email if u else 'My').split('@')[0].replace('.', ' ').title()}'s Workspace"
+            target_ws = await create_workspace(ws_name)
+            await add_user_to_workspace(target_ws, effective_user_id, role="owner")
+            if session_id:
+                await switch_workspace_in_session(session_id, target_ws)
+
+            # Copy existing primary GitHub token to the new workspace
+            from db.token_repo import save_token as _save_token
+            existing_token_data = {
+                "access_token": existing_github.get("access_token", ""),
+                "provider_username": existing_github.get("provider_username"),
+                "provider_account_id": existing_account_id,
+                "avatar_url": existing_github.get("avatar_url"),
+            }
+            await _save_token(effective_user_id, "github", existing_token_data, workspace_id=target_ws)
+            logger.info(f"Copied existing GitHub token to new workspace {target_ws}")
+        elif existing_github:
+            logger.info(
+                f"Single-mode user {effective_user_id} re-authenticating existing GitHub account "
+                f"({provider_account_id}) — updating token in place, no workspace created"
+            )
+
     await save_token(
-        user_id=current_user_id,
+        user_id=effective_user_id,
         provider="github",
         token_data={
             "access_token": access_token,
@@ -157,7 +223,7 @@ async def github_callback(
         workspace_id=target_ws,
     )
 
-    logger.success(f"GitHub connected successfully for user {current_user_id} (workspace: {target_ws}) (@{github_username})")
+    logger.success(f"GitHub connected successfully for user {effective_user_id} (workspace: {target_ws}) (@{github_username})")
     return RedirectResponse(
         f"{base_url}/settings?github=connected&username={github_username}",
         status_code=303,

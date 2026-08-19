@@ -121,6 +121,12 @@ async def create_workspace_route(
     if primary_token:
         await save_token(user_id, "google", primary_token, workspace_id=workspace_id)
 
+    # Also copy the primary GitHub token (if any) to the new workspace
+    primary_github = await get_token(user_id, "github", workspace_id=None)
+    if primary_github:
+        await save_token(user_id, "github", primary_github, workspace_id=workspace_id)
+        logger.info(f"Copied primary GitHub token to new workspace {workspace_id}")
+
     await switch_workspace_in_session(session_id, workspace_id)
 
     logger.info(f"User {user_id} created and switched to new workspace '{name}' ({workspace_id})")
