@@ -1,8 +1,7 @@
 import httpx
 from core.logger import logger
 from core.messages import TOOL_GMAIL_ERROR, INTERNAL_ERROR
-from mcp_server import mcp
-from mcp_server.tools.common import require_token, check_and_mark_call, check_account_ambiguity
+from tools.common import require_token, check_and_mark_call, check_account_ambiguity
 
 
 def _gmail_err(context: str, exc: Exception) -> str:
@@ -52,7 +51,6 @@ def _has_gmail_write_scope(token: dict) -> bool:
     return any(s in granted for s in _GMAIL_WRITE_SCOPES)
 
 
-@mcp.tool
 async def google_list_emails(max_results: int = 5, account_email: str = "", workspace_id: str = "", user_id: str = "") -> list[dict]:
     """List the most recent Gmail messages for the authenticated user.
 
@@ -110,7 +108,6 @@ async def google_list_emails(max_results: int = 5, account_email: str = "", work
         return [{"error": err_msg}]
 
 
-@mcp.tool
 async def google_whoami(account_email: str = "", workspace_id: str = "", user_id: str = "") -> dict:
     """Fetch the authenticated Google user's profile to verify the token.
 
@@ -138,7 +135,6 @@ async def google_whoami(account_email: str = "", workspace_id: str = "", user_id
         return {"error": err_msg}
 
 
-@mcp.tool
 async def gmail_send(to: str, subject: str, body: str, account_email: str = "", workspace_id: str = "", user_id: str = "") -> dict:
     """Send an email on behalf of the authenticated user."""
     import base64
@@ -182,7 +178,6 @@ async def gmail_send(to: str, subject: str, body: str, account_email: str = "", 
         return {"error": err_msg}
 
 
-@mcp.tool
 async def gmail_reply(thread_id: str, to: str, subject: str, body: str, account_email: str = "", workspace_id: str = "", user_id: str = "") -> dict:
     """Reply to an existing email thread."""
     import base64
@@ -225,7 +220,6 @@ async def gmail_reply(thread_id: str, to: str, subject: str, body: str, account_
         return {"error": err_msg}
 
 
-@mcp.tool
 async def gmail_archive(message_id: str, account_email: str = "", workspace_id: str = "", user_id: str = "") -> dict:
     """Archive a Gmail message by removing it from the INBOX."""
     if check_and_mark_call("gmail_archive", {"message_id": message_id, "account_email": account_email}):
@@ -303,7 +297,6 @@ def _extract_body_text(payload: dict) -> str:
     return ""
 
 
-@mcp.tool
 async def gmail_get_email(message_id: str, account_email: str = "", workspace_id: str = "", user_id: str = "") -> dict:
     """Read the full body content, headers, and details of a specific Gmail message."""
     try:
@@ -345,7 +338,6 @@ async def gmail_get_email(message_id: str, account_email: str = "", workspace_id
         return {"error": err_msg}
 
 
-@mcp.tool
 async def gmail_search_emails(
     query: str,
     max_results: int = 5,
@@ -401,7 +393,6 @@ async def gmail_search_emails(
         return [{"error": err_msg}]
 
 
-@mcp.tool
 async def gmail_mark_as_read(message_id: str, account_email: str = "", workspace_id: str = "", user_id: str = "") -> dict:
     """Mark an unread Gmail message as read."""
     if check_and_mark_call("gmail_mark_as_read", {"message_id": message_id, "account_email": account_email}):

@@ -23,10 +23,10 @@ _MODULE_LABELS = {
     "db.engine":                 "DATABASE",
     "adk_agent.agent":           "AGENT   ",
     "adk_agent.prompts":         "AGENT   ",
-    "mcp_server.tools.gmail":    "GMAIL   ",
-    "mcp_server.tools.calendar": "CALENDAR",
-    "mcp_server.tools.github":   "GITHUB  ",
-    "mcp_server.tools.common":   "DATABASE",
+    "tools.gmail":    "GMAIL   ",
+    "tools.calendar": "CALENDAR",
+    "tools.github":   "GITHUB  ",
+    "tools.common":   "DATABASE",
     "core.logger":               "SYSTEM  ",
     "main":                      "SERVER  ",
     "uvicorn":                   "SERVER  ",
@@ -166,10 +166,12 @@ def setup_logger(log_level: str | None = None) -> None:
         colorize=False,
     )
 
-    # Intercept uvicorn and fastapi logs
+    # Intercept uvicorn and fastapi logs, disabling propagation to avoid duplicate logs
     logging.basicConfig(handlers=[InterceptHandler()], level=0, force=True)
     for uvicorn_logger in ("uvicorn", "uvicorn.access", "uvicorn.error", "fastapi"):
-        logging.getLogger(uvicorn_logger).handlers = [InterceptHandler()]
+        lg = logging.getLogger(uvicorn_logger)
+        lg.handlers = [InterceptHandler()]
+        lg.propagate = False
 
 
 # Initialize immediately upon module import

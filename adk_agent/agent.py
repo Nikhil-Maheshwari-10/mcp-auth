@@ -31,8 +31,9 @@ from google.genai.errors import ClientError
 from core.logger import logger
 from adk_agent.prompts import SYSTEM_PROMPT
 
-# ── Tool imports — these are plain async functions, @mcp.tool is pass-through ─
-from mcp_server.tools.gmail import (
+# ── Tool imports — plain async functions from the framework-agnostic tools/ package ─
+# tools/ has no FastMCP or ADK dependency. mcp_server/ wraps them for Claude Desktop.
+from tools.gmail import (
     google_list_emails,
     google_whoami,
     gmail_get_email,
@@ -42,7 +43,7 @@ from mcp_server.tools.gmail import (
     gmail_archive,
     gmail_mark_as_read,
 )
-from mcp_server.tools.calendar import (
+from tools.calendar import (
     google_list_calendar_events,
     calendar_search_events,
     calendar_get_event,
@@ -50,7 +51,7 @@ from mcp_server.tools.calendar import (
     calendar_update_event,
     calendar_delete_event,
 )
-from mcp_server.tools.github import (
+from tools.github import (
     github_whoami,
     github_list_repos,
     github_list_issues,
@@ -58,10 +59,12 @@ from mcp_server.tools.github import (
     github_get_issue,
     github_get_pr,
     github_get_file_contents,
+    github_get_repo_tree,
     github_create_issue,
     github_comment_on_issue,
     github_close_issue,
     github_create_pr,
+    github_list_branches,
 )
 
 load_dotenv()
@@ -142,7 +145,7 @@ async def get_instruction(ctx: ReadonlyContext) -> str:
     target_id = ctx.user_id if ctx else ""
     if target_id:
         real_user_id, workspace_id = await _resolve_identity(target_id)
-        from mcp_server.tools.common import set_context_user_id, set_context_workspace_id
+        from tools.common import set_context_user_id, set_context_workspace_id
         set_context_user_id(real_user_id)
         if workspace_id:
             set_context_workspace_id(workspace_id)
@@ -154,13 +157,29 @@ async def get_instruction(ctx: ReadonlyContext) -> str:
         accounts_context = "No session context."
         session_label = "unknown"
 
-    account_count = accounts_context.count("@") if accounts_context else 0
-    multi_account_reminder = (
-        "\n[MULTI-ACCOUNT REMINDER]\n"
-        f"There are {account_count} Google account(s) connected in this workspace.\n"
-        "RULE: If the user's message does NOT specify which account (or 'all'/'both'), "
-        "you MUST ask which account to use before calling any tool. Do NOT call tools for all accounts speculatively."
-    ) if account_count > 1 else ""
+    import re
+    # Count Google accounts: numbered lines like "  1. email@domain" (NOT starting with @)
+    google_count = len(re.findall(r"^\s+\d+\.\s+(?!@)\S", accounts_context, re.MULTILINE))
+    # Count GitHub accounts: numbered lines like "  1. @username" (starting with @)
+    github_count = len(re.findall(r"^\s+\d+\.\s+@", accounts_context, re.MULTILINE))
+
+    reminders = []
+    if google_count > 1:
+        reminders.append(
+            f"[MULTI-ACCOUNT: GOOGLE]\n"
+            f"There are {google_count} Google accounts connected.\n"
+            "RULE: If the user's message does NOT specify which account (or 'all'/'both'), "
+            "you MUST ask which Google account to use before calling any Gmail/Calendar tool."
+        )
+    if github_count > 1:
+        reminders.append(
+            f"[MULTI-ACCOUNT: GITHUB]\n"
+            f"There are {github_count} GitHub accounts connected.\n"
+            "RULE: If the user's message does NOT specify which GitHub account (or 'all'/'both'), "
+            "you MUST ask which GitHub account to use before calling any GitHub tool. "
+            "Pass the chosen username in the account_username parameter."
+        )
+    multi_account_reminder = ("\n" + "\n\n".join(reminders)) if reminders else ""
 
     return (
         f"{SYSTEM_PROMPT}\n\n"
@@ -300,7 +319,7 @@ def create_agent() -> LlmAgent:
         logger.info(f"Loaded {len(keys)} Gemini API key(s) into rotation pool for model 'gemini-3.6-flash'")
         
     model = RotatedGemini(
-        model="gemini-3.6-flash",
+        model="gemini-3.5-flash-lite",
         api_keys=keys
     )
 
@@ -334,10 +353,12 @@ def create_agent() -> LlmAgent:
             github_get_issue,
             github_get_pr,
             github_get_file_contents,
+            github_get_repo_tree,
             github_create_issue,
             github_comment_on_issue,
             github_close_issue,
             github_create_pr,
+            github_list_branches,
         ],
     )
 

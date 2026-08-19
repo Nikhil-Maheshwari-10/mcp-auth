@@ -178,7 +178,7 @@ async def save_token(
                     workspace_id=workspace_id,
                     provider=provider,
                     provider_account_id=account_id,
-                    is_active=True,
+                    is_active=True,  # new account starts active; others keep their state
                     access_token=_encrypt(raw_access),
                     refresh_token=_encrypt(raw_refresh) if raw_refresh else None,
                     expires_at=expires_at,
@@ -188,26 +188,43 @@ async def save_token(
                 )
                 session.add(new_token)
 
-            # Set all other accounts for this scope to inactive
-            other_conditions = [
-                OAuthToken.user_id == user_id,
-                OAuthToken.provider == provider,
-                OAuthToken.provider_account_id != account_id,
-            ]
-            if workspace_id:
-                other_conditions.append(OAuthToken.workspace_id == workspace_id)
-            else:
-                other_conditions.append(OAuthToken.workspace_id.is_(None))
-
-            await session.execute(
-                update(OAuthToken)
-                .where(*other_conditions)
-                .values(is_active=False)
-            )
+            # NOTE: We intentionally do NOT mark other accounts inactive here.
+            # is_active for other accounts is only changed via set_active_token().
+            # Doing it here caused the first GitHub account to go inactive the moment
+            # a second one was connected, making the agent always pick the latest one.
 
     logger.info(
         f"Saved OAuth token for user {user_id} (workspace: {workspace_id}, provider: {provider}, username: {username})"
     )
+
+
+
+async def count_tokens(
+    user_id: uuid.UUID,
+    provider: str,
+    workspace_id: uuid.UUID | None = None,
+) -> int:
+    """Return the number of distinct provider tokens for a user in a workspace.
+
+    Used for enforcing MAX_LINKED_GMAIL/GITHUB_ACCOUNTS limits.
+    """
+    async with AsyncSessionLocal() as session:
+        if workspace_id:
+            conditions = [
+                OAuthToken.user_id == user_id,
+                OAuthToken.provider == provider,
+                OAuthToken.workspace_id == workspace_id,
+            ]
+        else:
+            conditions = [
+                OAuthToken.user_id == user_id,
+                OAuthToken.provider == provider,
+                OAuthToken.workspace_id.is_(None),
+            ]
+        result = await session.execute(
+            select(func.count()).where(*conditions)
+        )
+        return result.scalar_one() or 0
 
 
 async def get_token(

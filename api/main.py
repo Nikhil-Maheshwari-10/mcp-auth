@@ -10,6 +10,7 @@ Routes:
   GET /health                 — liveness check
 """
 
+import os
 import time
 import uuid
 from contextlib import asynccontextmanager
@@ -259,6 +260,7 @@ async def me(ctx: tuple[uuid.UUID, uuid.UUID] = Depends(get_current_context)) ->
                 "missing_scopes": missing,
                 "connected": True,
                 "avatar_url": avatar,
+                "is_inherited": token.workspace_id is None,
             })
         elif token.provider == "github":
             acc_key = token.provider_account_id or token.provider_username
@@ -272,6 +274,7 @@ async def me(ctx: tuple[uuid.UUID, uuid.UUID] = Depends(get_current_context)) ->
                 "is_active": token.is_active,
                 "connected": True,
                 "avatar_url": token.avatar_url,
+                "is_inherited": token.workspace_id is None,
             })
 
     if ghost_token_ids:
@@ -307,4 +310,8 @@ async def me(ctx: tuple[uuid.UUID, uuid.UUID] = Depends(get_current_context)) ->
         "email": email,
         "connected_providers": connected,
         "workspaces": workspaces,
+        "account_limits": {
+            "max_gmail_accounts": int(os.environ.get("MAX_LINKED_GMAIL_ACCOUNTS", "3")),
+            "max_github_accounts": int(os.environ.get("MAX_LINKED_GITHUB_ACCOUNTS", "3")),
+        },
     }

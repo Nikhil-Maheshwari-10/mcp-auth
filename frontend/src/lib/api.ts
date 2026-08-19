@@ -51,6 +51,10 @@ export interface UserProfile {
     }
   }
   workspaces?: Workspace[]
+  account_limits?: {
+    max_gmail_accounts: number
+    max_github_accounts: number
+  }
 }
 
 export interface Session {
@@ -280,6 +284,28 @@ export function formatToolStep(toolName: string): string {
   return TOOL_DESCRIPTIONS[toolName] || `🛠️ Executing tool: ${toolName}`
 }
 
+export function formatErrorMessage(statusOrErr: number | string | Error): string {
+  const errStr = typeof statusOrErr === 'object' ? statusOrErr.message : String(statusOrErr)
+  if (errStr.includes('503') || errStr.includes('429')) {
+    return '⚡ AI service is temporarily busy or rate-limited. Please wait a moment and try again.'
+  }
+  if (errStr.includes('502')) {
+    return '🔌 Backend service is restarting or temporarily unreachable. Please try again shortly.'
+  }
+  if (errStr.includes('500')) {
+    return '⚠️ Server error encountered while processing your query. Please try again.'
+  }
+  if (errStr.includes('401')) {
+    return '🔒 Session expired. Please refresh the page or log in again.'
+  }
+  if (errStr.includes('Failed to fetch') || errStr.includes('NetworkError')) {
+    return '🌐 Connection lost. Please check your network connection.'
+  }
+  return errStr.startsWith('⚠️') || errStr.startsWith('⚡') || errStr.startsWith('🔌') || errStr.startsWith('🔒') || errStr.startsWith('🌐')
+    ? errStr
+    : `⚠️ ${errStr}`
+}
+
 export function runSse(
   workspaceId: string,
   sessionId: string,
@@ -309,18 +335,20 @@ export function runSse(
     })
       .then(async (res) => {
         if (!res.ok) {
-          if ((res.status === 404 || res.status === 400 || res.status === 500) && !isRetry) {
+          // Automatic 1-shot retry for 503/502/500/404 after a 1.5s pause
+          if ((res.status === 503 || res.status === 502 || res.status === 500 || res.status === 404 || res.status === 400) && !isRetry) {
+            await new Promise((r) => setTimeout(r, 1500))
             try {
               const ns = await createSession(workspaceId)
               doFetch(ns.id, true)
               return
             } catch { /* ignore retry error, fall through */ }
           }
-          onError(new Error(`HTTP ${res.status}`))
+          onError(new Error(formatErrorMessage(res.status)))
           return
         }
         if (!res.body) {
-          onError(new Error('No response body'))
+          onError(new Error('No response body received from server'))
           return
         }
 
@@ -360,10 +388,13 @@ export function runSse(
         onDone()
       })
       .catch((err) => {
-        if (err.name !== 'AbortError') onError(err)
+        if (err.name !== 'AbortError') {
+          onError(new Error(formatErrorMessage(err)))
+        }
       })
   }
 
   doFetch(sessionId)
   return ctrl
 }
+

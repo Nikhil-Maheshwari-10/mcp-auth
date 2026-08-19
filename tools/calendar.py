@@ -2,8 +2,7 @@ from datetime import datetime, timezone
 import httpx
 from core.logger import logger
 from core.messages import TOOL_CALENDAR_ERROR, INTERNAL_ERROR
-from mcp_server import mcp
-from mcp_server.tools.common import require_token, check_and_mark_call, check_account_ambiguity
+from tools.common import require_token, check_and_mark_call, check_account_ambiguity
 
 
 def _calendar_err(context: str, exc: Exception) -> str:
@@ -36,7 +35,6 @@ def _has_calendar_scope(token: dict) -> bool:
     return all(s in granted for s in _CALENDAR_SCOPES_REQUIRED)
 
 
-@mcp.tool
 async def google_list_calendar_events(max_results: int = 5, account_email: str = "", workspace_id: str = "", user_id: str = "") -> list[dict]:
     """List the next upcoming Google Calendar events for the authenticated user."""
     ambiguity = await check_account_ambiguity(account_email, provider="google")
@@ -88,7 +86,6 @@ async def google_list_calendar_events(max_results: int = 5, account_email: str =
         return [{"error": err_msg}]
 
 
-@mcp.tool
 async def calendar_create_event(
     summary: str,
     start_time: str,
@@ -143,7 +140,6 @@ async def calendar_create_event(
         return {"error": err_msg}
 
 
-@mcp.tool
 async def calendar_update_event(
     event_id: str,
     summary: str = None,
@@ -198,7 +194,6 @@ async def calendar_update_event(
         return {"error": err_msg}
 
 
-@mcp.tool
 async def calendar_delete_event(event_id: str, account_email: str = "", workspace_id: str = "", user_id: str = "") -> dict:
     """Delete an event from the user's primary Google Calendar."""
     if check_and_mark_call("calendar_delete_event", {"event_id": event_id, "account_email": account_email}):
@@ -226,7 +221,6 @@ async def calendar_delete_event(event_id: str, account_email: str = "", workspac
         return {"error": err_msg}
 
 
-@mcp.tool
 async def calendar_search_events(
     query: str = "",
     time_min: str = None,
@@ -294,7 +288,6 @@ async def calendar_search_events(
         return [{"error": err_msg}]
 
 
-@mcp.tool
 async def calendar_get_event(event_id: str, account_email: str = "", workspace_id: str = "", user_id: str = "") -> dict:
     """Retrieve full details for a specific calendar event."""
     try:

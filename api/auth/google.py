@@ -174,8 +174,8 @@ async def google_callback(
         workspace_id = existing_workspace_id
 
         # Adding a 2nd account strictly requires a workspace.
-        # If user is currently in single-account mode (workspace_id is None), auto-create a workspace first.
-        if (is_add_account or sub != existing_user_id) and not workspace_id:
+        # Only auto-create a workspace when explicitly adding a new account (not on re-auth).
+        if is_add_account and not workspace_id:
             from db.models import User
             from db.engine import AsyncSessionLocal
             from db.workspace_repo import create_workspace, add_user_to_workspace
@@ -251,6 +251,12 @@ async def google_callback(
 
 @router.get("/add-account")
 async def google_add_account(request: Request) -> RedirectResponse:
+    """Start OAuth to add a 2nd Google account.
+
+    The frontend must have already created a workspace (via POST /workspace/create)
+    before calling this endpoint, so the session already carries a workspace_id.
+    This route only enforces the account limit and starts the OAuth flow.
+    """
     session_id = request.cookies.get("session_id")
     base_url = _get_base_url(request)
 
@@ -262,33 +268,36 @@ async def google_add_account(request: Request) -> RedirectResponse:
         return RedirectResponse(f"{base_url}/login?error=session_expired", status_code=303)
 
     workspace_id = await get_workspace_from_session(session_id)
+
+    # ── Enforce MAX_LINKED_GMAIL_ACCOUNTS limit ───────────────────────────
+    max_gmail = int(os.environ.get("MAX_LINKED_GMAIL_ACCOUNTS", "3"))
+    from db.token_repo import count_tokens
+    current_count = await count_tokens(user_id, "google", workspace_id)
+    if current_count >= max_gmail:
+        logger.warning(
+            f"Gmail account limit reached for user {user_id} "
+            f"(workspace: {workspace_id}): {current_count}/{max_gmail}"
+        )
+        return RedirectResponse(
+            f"{base_url}/settings?error=gmail_account_limit_reached&limit={max_gmail}",
+            status_code=303,
+        )
+    # ─────────────────────────────────────────────────────────────────────
+
+    # workspace_id is expected to be set by the frontend via POST /workspace/create
+    # before reaching here. If somehow still None, log a warning but proceed —
+    # the callback will save the new token to the null-workspace scope (single mode).
     if not workspace_id:
-        # Multi-account requires a Workspace. Auto-create user's first workspace.
-        from db.models import User
-        from db.engine import AsyncSessionLocal
-        from db.workspace_repo import create_workspace, add_user_to_workspace
-        from api.auth.session import switch_workspace_in_session
-        from db.token_repo import get_token, save_token
-        from sqlalchemy import select
-
-        async with AsyncSessionLocal() as db:
-            u_res = await db.execute(select(User).where(User.id == user_id))
-            u = u_res.scalar_one_or_none()
-
-        ws_name = f"{(u.email if u else 'My').split('@')[0].replace('.', ' ').title()}'s Workspace"
-        workspace_id = await create_workspace(ws_name)
-        await add_user_to_workspace(workspace_id, user_id, role="owner")
-        await switch_workspace_in_session(session_id, workspace_id)
-
-        # Copy existing primary login token to the new workspace
-        primary_token = await get_token(user_id, "google", workspace_id=None)
-        if primary_token:
-            await save_token(user_id, "google", primary_token, workspace_id=workspace_id)
+        logger.warning(
+            f"User {user_id} reached /add-account without an active workspace — "
+            "frontend should have created one first. Proceeding in single mode."
+        )
 
     code_verifier, code_challenge, state = generate_pkce_state()
     _pending[state] = {"code_verifier": code_verifier, "reauth": False, "email": None, "add_account": True, "_ts": time.time()}
 
     redirect_uri = f"{base_url}/api/auth/google/callback"
+    logger.info(f"Initiating add-account OAuth for user {user_id} (workspace: {workspace_id})")
     return RedirectResponse(build_auth_url(redirect_uri, code_challenge, state))
 
 

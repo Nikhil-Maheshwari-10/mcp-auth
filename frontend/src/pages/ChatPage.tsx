@@ -20,6 +20,7 @@ import {
   removeGoogleAccount,
   disconnectGitHub,
   createWorkspace,
+  formatErrorMessage,
 } from '../lib/api'
 
 interface Message {
@@ -28,6 +29,7 @@ interface Message {
   text: string
   streaming?: boolean
   steps?: string[]
+  isError?: boolean
 }
 
 function extractEventText(event: any): string {
@@ -260,7 +262,16 @@ export default function ChatPage() {
               setMessages((prev) => {
                 const next = prev.map((m) => {
                   if (m.id !== streamingId) return m
-                  return { ...m, streaming: false, steps: undefined }
+                  const text = m.text.trim()
+                    ? m.text
+                    : '⚠️ The AI model did not return a response. Please try asking your question again.'
+                  return {
+                    ...m,
+                    text,
+                    isError: !m.text.trim(),
+                    streaming: false,
+                    steps: undefined,
+                  }
                 })
                 persistMessages(next, sessionId)
                 return next
@@ -271,7 +282,7 @@ export default function ChatPage() {
               setMessages((prev) => {
                 const next = prev.map((m) =>
                   m.id === streamingId
-                    ? { ...m, text: `⚠️ Error: ${err.message}`, streaming: false, steps: undefined }
+                    ? { ...m, text: formatErrorMessage(err), isError: true, streaming: false, steps: undefined }
                     : m
                 )
                 persistMessages(next, sessionId)
@@ -408,6 +419,33 @@ export default function ChatPage() {
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const abortRef = useRef<AbortController | null>(null)
   const sessionCreatingRef = useRef(false)
+
+  // Auto-focus chat input when user starts typing anywhere on the page
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      // Ignore if already focused on an input/textarea/select/contenteditable
+      const active = document.activeElement
+      if (
+        active instanceof HTMLInputElement ||
+        active instanceof HTMLTextAreaElement ||
+        active instanceof HTMLSelectElement ||
+        (active instanceof HTMLElement && active.isContentEditable)
+      ) return
+
+      // Ignore modifier-only combos (Ctrl+C, Cmd+V, etc.) and special keys
+      if (e.ctrlKey || e.metaKey || e.altKey) return
+      if (e.key.length !== 1) return  // ignore Escape, F1-F12, ArrowKeys, etc.
+
+      // Focus the textarea and let the keypress land naturally
+      const ta = inputRef.current
+      if (!ta) return
+      ta.focus()
+      // The browser will append the character to the now-focused textarea automatically
+    }
+
+    window.addEventListener('keydown', handleGlobalKeyDown)
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown)
+  }, [])
 
   const scrollBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -644,7 +682,16 @@ export default function ChatPage() {
         setMessages((prev) => {
           const next = prev.map((m) => {
             if (m.id !== agentMsg.id) return m
-            return { ...m, streaming: false, steps: undefined }
+            const text = m.text.trim()
+              ? m.text
+              : '⚠️ The AI model did not return a response. Please try asking your question again.'
+            return {
+              ...m,
+              text,
+              isError: !m.text.trim(),
+              streaming: false,
+              steps: undefined,
+            }
           })
           persistMessages(next, currentSessionId)
           return next
@@ -665,7 +712,7 @@ export default function ChatPage() {
         setMessages((prev) => {
           const next = prev.map((m) =>
             m.id === agentMsg.id
-              ? { ...m, text: `⚠️ Error: ${err.message}`, streaming: false, steps: undefined }
+              ? { ...m, text: formatErrorMessage(err), isError: true, streaming: false, steps: undefined }
               : m
           )
           persistMessages(next, currentSessionId)
@@ -714,6 +761,12 @@ export default function ChatPage() {
   const githubUsername = profile?.connected_providers?.github?.username
   const githubAccounts: Array<{ username: string; provider_account_id: string; is_active: boolean; avatar_url?: string | null }> =
     profile?.connected_providers?.github?.accounts ?? []
+
+  // Account limits from /me response
+  const maxGmail = profile?.account_limits?.max_gmail_accounts ?? 3
+  const maxGithub = profile?.account_limits?.max_github_accounts ?? 3
+  const atGmailLimit = googleAccounts.length >= maxGmail
+  const atGithubLimit = githubAccounts.length >= maxGithub
 
   if (loading) {
     return (
@@ -954,9 +1007,7 @@ export default function ChatPage() {
               <div className="sidebar-user-info" style={{ marginLeft: sortedGoogleAccounts.length > 1 ? 6 : 0, overflow: 'hidden' }}>
                 <div className="sidebar-user-email" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{profile?.email ?? 'Unknown'}</div>
                 <div className="sidebar-user-role" style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                  {((googleAccounts.length || 1) + (githubAccounts.length || (githubConnected ? 1 : 0))) > 1
-                    ? `● ${(googleAccounts.length || 1) + (githubAccounts.length || (githubConnected ? 1 : 0))} Connected Accounts`
-                    : 'Workspace owner'}
+                  {sortedGoogleAccounts.length > 1 ? `● ${sortedGoogleAccounts.length} Connected Accounts` : 'Workspace owner'}
                 </div>
               </div>
 
@@ -1156,6 +1207,35 @@ export default function ChatPage() {
                         </ReactMarkdown>
                       )}
 
+                      {/* Retry Action Bar for Error / Interrupted Messages */}
+                      {(msg.isError || (msg.text && (msg.text.startsWith('⚠️') || msg.text.startsWith('⚡') || msg.text.startsWith('🔌') || msg.text.startsWith('🌐')))) && !msg.streaming && (() => {
+                        const msgIdx = messages.findIndex((m) => m.id === msg.id)
+                        const prevUserMsg = msgIdx > 0 ? messages.slice(0, msgIdx).reverse().find((m) => m.role === 'user') : null
+                        const queryToRetry = prevUserMsg?.text || ''
+
+                        return (
+                          <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+                            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Something went wrong processing this request.</span>
+                            {queryToRetry && (
+                              <button
+                                type="button"
+                                className="btn btn-ghost btn-sm"
+                                onClick={() => {
+                                  updateInput(queryToRetry)
+                                  setTimeout(() => {
+                                    const sendBtn = document.getElementById('send-btn')
+                                    sendBtn?.click()
+                                  }, 100)
+                                }}
+                                style={{ fontSize: 12, padding: '4px 10px', color: '#818cf8', display: 'flex', alignItems: 'center', gap: 5, background: 'rgba(99, 102, 241, 0.1)', border: '1px solid rgba(99, 102, 241, 0.25)', borderRadius: 'var(--radius-md)' }}
+                              >
+                                🔄 Retry Query
+                              </button>
+                            )}
+                          </div>
+                        )
+                      })()}
+
                       {/* Interactive Auth Action Card */}
                       {msg.text && (() => {
                         const card = getAuthCardInfo(msg.text)
@@ -1284,17 +1364,21 @@ export default function ChatPage() {
                   <button
                     type="button"
                     className="btn btn-ghost btn-sm"
-                    style={{ fontSize: 11, padding: '4px 10px', color: '#60a5fa', cursor: 'pointer' }}
+                    disabled={atGmailLimit}
+                    title={atGmailLimit ? `Gmail account limit reached (${maxGmail} max)` : 'Add another Gmail account'}
+                    style={{ fontSize: 11, padding: '4px 10px', color: atGmailLimit ? 'var(--text-muted)' : '#60a5fa', cursor: atGmailLimit ? 'not-allowed' : 'pointer', opacity: atGmailLimit ? 0.5 : 1 }}
                     onClick={() => {
+                      if (atGmailLimit) return
                       setShowProfileModal(false)
-                      if (!profile?.workspace_id) {
-                        handleOpenCreateWsModal('add-account')
+                      // Only prompt workspace creation when upgrading from single → multi-account
+                      if (!profile?.workspace_id && googleAccounts.length > 0) {
+                        handleOpenCreateWsModal('add-account-google')
                       } else {
                         window.location.href = getGoogleAddAccountUrl()
                       }
                     }}
                   >
-                    ➕ Add Gmail Account
+                    {atGmailLimit ? `Gmail (${googleAccounts.length}/${maxGmail})` : '➕ Add Gmail Account'}
                   </button>
                 </div>
 
@@ -1357,21 +1441,27 @@ export default function ChatPage() {
                   <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>
                     GitHub Accounts ({githubAccounts.length || (githubConnected ? 1 : 0)})
                   </div>
-                  <button
-                    type="button"
-                    className="btn btn-ghost btn-sm"
-                    style={{ fontSize: 11, padding: '4px 10px', color: '#60a5fa', display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}
-                    onClick={() => {
-                      setShowProfileModal(false)
-                      if (!profile?.workspace_id) {
-                        handleOpenCreateWsModal('add-account-github')
-                      } else {
-                        window.location.href = getGitHubAddAccountUrl()
-                      }
-                    }}
-                  >
-                    ➕ Add GitHub Account
-                  </button>
+                  {/* Only show Add button when at least 1 GitHub account is already connected */}
+                  {(githubAccounts.length > 0 || githubConnected) && (
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm"
+                      disabled={atGithubLimit}
+                      title={atGithubLimit ? `GitHub account limit reached (${maxGithub} max)` : 'Add another GitHub account'}
+                      style={{ fontSize: 11, padding: '4px 10px', color: atGithubLimit ? 'var(--text-muted)' : '#60a5fa', display: 'flex', alignItems: 'center', gap: 4, cursor: atGithubLimit ? 'not-allowed' : 'pointer', opacity: atGithubLimit ? 0.5 : 1 }}
+                      onClick={() => {
+                        if (atGithubLimit) return
+                        setShowProfileModal(false)
+                        if (!profile?.workspace_id) {
+                          handleOpenCreateWsModal('add-account-github')
+                        } else {
+                          window.location.href = getGitHubAddAccountUrl()
+                        }
+                      }}
+                    >
+                      {atGithubLimit ? `GitHub (${githubAccounts.length}/${maxGithub})` : '➕ Add GitHub Account'}
+                    </button>
+                  )}
                 </div>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -1428,7 +1518,7 @@ export default function ChatPage() {
                           {githubConnected ? (
                             <>
                               <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)' }}>@{githubUsername}</div>
-                              <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Connected · 11 Developer Tools</div>
+                              <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Connected · 12 Developer Tools</div>
                             </>
                           ) : (
                             <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Not Connected</div>
@@ -1464,7 +1554,7 @@ export default function ChatPage() {
                   onClick={() => { setShowProfileModal(false); navigate('/settings'); }}
                   style={{ display: 'flex', alignItems: 'center', gap: 6 }}
                 >
-                  ⚙️ Full Settings
+                  ⚙️ Settings
                 </button>
 
                 <button
